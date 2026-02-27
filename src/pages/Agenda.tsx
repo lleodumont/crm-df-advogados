@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Calendar, Clock, MapPin, Phone, Mail, User, Plus, X, CheckCircle, AlertCircle, Circle } from 'lucide-react';
+import { Calendar, Clock, MapPin, Phone, Mail, User, Plus, X, CheckCircle, AlertCircle, Circle, List, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type ActivityType = 'meeting' | 'call' | 'task' | 'email' | 'follow_up';
@@ -49,6 +49,8 @@ export default function Agenda() {
   const [leads, setLeads] = useState<Array<{ id: string; full_name: string }>>([]);
   const [filterStatus, setFilterStatus] = useState<'all' | ActivityStatus>('all');
   const [filterType, setFilterType] = useState<'all' | ActivityType>('all');
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const [newActivity, setNewActivity] = useState<NewActivity>({
     lead_id: '',
@@ -249,6 +251,132 @@ export default function Agenda() {
 
   const groupedActivities = groupActivitiesByDate(activities);
 
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+
+    return { daysInMonth, startingDayOfWeek, year, month };
+  };
+
+  const getActivitiesForDate = (date: Date) => {
+    return activities.filter(activity => {
+      const activityDate = new Date(activity.scheduled_at);
+      return (
+        activityDate.getDate() === date.getDate() &&
+        activityDate.getMonth() === date.getMonth() &&
+        activityDate.getFullYear() === date.getFullYear()
+      );
+    });
+  };
+
+  const previousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  };
+
+  const goToToday = () => {
+    setCurrentMonth(new Date());
+  };
+
+  const renderCalendarView = () => {
+    const { daysInMonth, startingDayOfWeek, year, month } = getDaysInMonth(currentMonth);
+    const days = [];
+    const monthName = currentMonth.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      days.push(<div key={`empty-${i}`} className="min-h-[120px] bg-gray-50"></div>);
+    }
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const currentDate = new Date(year, month, day);
+      const dayActivities = getActivitiesForDate(currentDate);
+      const isToday =
+        currentDate.getDate() === new Date().getDate() &&
+        currentDate.getMonth() === new Date().getMonth() &&
+        currentDate.getFullYear() === new Date().getFullYear();
+
+      days.push(
+        <div
+          key={day}
+          className={`min-h-[120px] border border-gray-200 p-2 ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-white'}`}
+        >
+          <div className={`text-sm font-semibold mb-2 ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
+            {day}
+            {isToday && <span className="ml-1 text-xs">(Hoje)</span>}
+          </div>
+          <div className="space-y-1">
+            {dayActivities.slice(0, 3).map(activity => (
+              <div
+                key={activity.id}
+                className={`text-xs p-1.5 rounded cursor-pointer hover:opacity-80 transition-opacity ${getActivityTypeColor(activity.activity_type)}`}
+                title={`${activity.title} - ${new Date(activity.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+              >
+                <div className="font-medium truncate">
+                  {new Date(activity.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} {activity.title}
+                </div>
+              </div>
+            ))}
+            {dayActivities.length > 3 && (
+              <div className="text-xs text-gray-600 pl-1.5">
+                +{dayActivities.length - 3} mais
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={previousMonth}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-4">
+              <h2 className="text-xl font-semibold text-gray-900 capitalize">{monthName}</h2>
+              <button
+                onClick={goToToday}
+                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+              >
+                Hoje
+              </button>
+            </div>
+            <button
+              onClick={nextMonth}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
+            {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
+              <div key={day} className="p-3 text-center text-sm font-semibold text-gray-700">
+                {day}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7">
+            {days}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -256,13 +384,39 @@ export default function Agenda() {
           <h1 className="text-3xl font-bold text-gray-900">Agenda</h1>
           <p className="text-gray-600 mt-1">Gerencie todas as atividades agendadas</p>
         </div>
-        <button
-          onClick={() => setShowNewActivityModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Nova Atividade
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                viewMode === 'list'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              Lista
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md transition-colors ${
+                viewMode === 'calendar'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              Calendário
+            </button>
+          </div>
+          <button
+            onClick={() => setShowNewActivityModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Nova Atividade
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
@@ -308,6 +462,8 @@ export default function Agenda() {
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
         </div>
+      ) : viewMode === 'calendar' ? (
+        renderCalendarView()
       ) : activities.length === 0 ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
           <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
