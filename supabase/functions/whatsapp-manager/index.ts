@@ -6,7 +6,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const UAZAPI_BASE_URL = "https://api.uazapi.com";
+// ✅ FIX 1: Usa variável de ambiente em vez de URL hardcoded
+const UAZAPI_BASE_URL = Deno.env.get("UAZAPI_BASE_URL") || "https://grupodumont.uazapi.com";
 
 interface CreateInstanceRequest {
   name: string;
@@ -29,6 +30,8 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const uazapiToken = Deno.env.get("UAZAPI_TOKEN");
+    // ✅ FIX 2: Pega o admintoken para criar instâncias
+    const uazapiAdminToken = Deno.env.get("UAZAPI_ADMIN_TOKEN");
 
     if (!uazapiToken) {
       throw new Error("UAZAPI_TOKEN not configured");
@@ -117,6 +120,38 @@ Deno.serve(async (req: Request) => {
 
       console.log("User has permission:", userProfile.role);
 
+      // ✅ FIX 3: Chama a UazAPI para criar a instância de verdade
+      console.log("Calling UazAPI to create instance...");
+      const uazapiResponse = await fetch(
+        `${UAZAPI_BASE_URL}/instance/init`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "admintoken": uazapiAdminToken || uazapiToken,
+          },
+          body: JSON.stringify({
+            name: name,
+          }),
+        }
+      );
+
+      if (!uazapiResponse.ok) {
+        const errorBody = await uazapiResponse.text();
+        console.error("UazAPI error response:", errorBody);
+        return new Response(
+          JSON.stringify({ error: `Failed to create instance on UazAPI: ${errorBody}` }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const uazapiData = await uazapiResponse.json();
+      console.log("UazAPI instance created:", uazapiData);
+
+      // Salva no banco com o token retornado pela UazAPI
       const { data: instance, error: insertError } = await supabase
         .from("whatsapp_instances")
         .insert({
@@ -124,12 +159,15 @@ Deno.serve(async (req: Request) => {
           instance_id: instanceId,
           status: "disconnected",
           created_by: userData.user.id,
+          // Salva o token da instância retornado pela UazAPI
+          token: uazapiData.token || null,
         })
         .select()
         .single();
 
       if (insertError) {
         console.error("Insert error:", insertError);
+        // Se falhou no banco, tenta deletar a instância da UazAPI para não deixar lixo
         return new Response(
           JSON.stringify({
             error: "Database error: " + insertError.message,
