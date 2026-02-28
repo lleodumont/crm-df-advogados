@@ -49,7 +49,13 @@ Deno.serve(async (req: Request) => {
       console.log("Instance data:", { name, instanceId });
 
       if (!name || !instanceId) {
-        throw new Error("Name and instanceId are required");
+        return new Response(
+          JSON.stringify({ error: "Name and instanceId are required" }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
 
       const { createClient } = await import("npm:@supabase/supabase-js@2.57.4");
@@ -61,25 +67,52 @@ Deno.serve(async (req: Request) => {
 
       if (userError) {
         console.error("User auth error:", userError);
-        throw new Error("Authentication failed: " + userError.message);
+        return new Response(
+          JSON.stringify({ error: "Authentication failed: " + userError.message }),
+          {
+            status: 401,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
 
       console.log("User authenticated:", userData.user.id);
 
-      // Check if user is admin or manager
       const { data: userProfile, error: profileError } = await supabase
         .from("user_profiles")
         .select("role")
         .eq("id", userData.user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError) {
         console.error("Profile error:", profileError);
-        throw new Error("Failed to fetch user profile");
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch user profile: " + profileError.message }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
 
-      if (!userProfile || !["admin", "manager"].includes(userProfile.role)) {
-        throw new Error("Insufficient permissions. Only admins and managers can create WhatsApp instances.");
+      if (!userProfile) {
+        return new Response(
+          JSON.stringify({ error: "User profile not found. Please contact administrator." }),
+          {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      if (!["admin", "manager"].includes(userProfile.role)) {
+        return new Response(
+          JSON.stringify({ error: "Insufficient permissions. Only admins and managers can create WhatsApp instances." }),
+          {
+            status: 403,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
 
       console.log("User has permission:", userProfile.role);
@@ -97,12 +130,22 @@ Deno.serve(async (req: Request) => {
 
       if (insertError) {
         console.error("Insert error:", insertError);
-        throw new Error("Database error: " + insertError.message);
+        return new Response(
+          JSON.stringify({
+            error: "Database error: " + insertError.message,
+            details: insertError
+          }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
 
       console.log("Instance created successfully:", instance.id);
 
       return new Response(JSON.stringify({ success: true, instance }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
