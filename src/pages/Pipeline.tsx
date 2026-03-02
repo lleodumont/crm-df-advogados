@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Phone, Mail, TrendingUp, Calendar, Plus, X, FileText, Clock } from 'lucide-react';
+import { Phone, Mail, TrendingUp, Calendar, Plus, X, FileText, Clock, Filter, BarChart3, RefreshCw, MessageCircle, CheckCircle } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -9,15 +9,15 @@ type LeadStatus = Database['public']['Tables']['leads']['Row']['status'];
 type LeadClassification = Database['public']['Tables']['leads']['Row']['classification'];
 type LeadAnswer = Database['public']['Tables']['lead_answers']['Row'];
 
-const statusColumns: { status: LeadStatus; label: string; color: string }[] = [
-  { status: 'novo', label: 'Novo', color: 'bg-gray-100' },
-  { status: 'triagem', label: 'Triagem', color: 'bg-orange-100' },
-  { status: 'qualificado', label: 'Qualificado', color: 'bg-yellow-100' },
-  { status: 'agendado', label: 'Agendado', color: 'bg-cyan-100' },
-  { status: 'compareceu', label: 'Compareceu', color: 'bg-blue-100' },
-  { status: 'proposta_enviada', label: 'Proposta Enviada', color: 'bg-purple-100' },
-  { status: 'ganho', label: 'Ganho', color: 'bg-green-100' },
-  { status: 'perdido', label: 'Perdido', color: 'bg-red-100' },
+const statusColumns: { status: LeadStatus; label: string; color: string; count?: number; value?: string }[] = [
+  { status: 'novo', label: 'POTENCIAL FUTURO', color: 'text-gray-700' },
+  { status: 'triagem', label: 'EM TRIAGEM', color: 'text-orange-700' },
+  { status: 'qualificado', label: 'QUALIFICADO', color: 'text-yellow-700' },
+  { status: 'agendado', label: 'AGENDADO', color: 'text-cyan-700' },
+  { status: 'compareceu', label: 'COMPARECEU', color: 'text-blue-700' },
+  { status: 'proposta_enviada', label: 'PROPOSTA ENVIADA', color: 'text-purple-700' },
+  { status: 'ganho', label: 'GANHO', color: 'text-green-700' },
+  { status: 'perdido', label: 'PERDIDO', color: 'text-red-700' },
 ];
 
 export default function Pipeline() {
@@ -270,17 +270,46 @@ export default function Pipeline() {
     );
   }
 
+  const calculateTotalValue = (status: LeadStatus) => {
+    return leads
+      .filter((lead) => lead.status === status)
+      .reduce((sum, lead) => sum + (lead.deal_value || 0), 0);
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    }).format(value);
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Pipeline</h1>
-        <button
-          onClick={() => setShowNewLeadModal(true)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Novo Lead
-        </button>
+    <div className="space-y-4 bg-gray-50 min-h-screen">
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Negociações</h1>
+            <p className="text-sm text-blue-600 font-medium mt-1">Direito civil</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">
+              <Filter className="w-4 h-4" />
+              Filtrar
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium">
+              <BarChart3 className="w-4 h-4" />
+              Fluxo geral
+            </button>
+            <button
+              onClick={() => setShowNewLeadModal(true)}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              Novo Lead
+            </button>
+          </div>
+        </div>
       </div>
 
       {showNewLeadModal && (
@@ -577,98 +606,121 @@ export default function Pipeline() {
         </div>
       )}
 
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex gap-4 overflow-x-auto pb-6 px-6">
         {statusColumns.map((column) => {
           const columnLeads = leads.filter((lead) => lead.status === column.status);
+          const totalValue = calculateTotalValue(column.status);
 
           return (
             <div
               key={column.status}
-              className="flex-shrink-0 w-80"
+              className="flex-shrink-0 w-[340px]"
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, column.status)}
             >
-              <div className={`${column.color} rounded-lg p-4 mb-3`}>
-                <h2 className="font-semibold text-gray-900">{column.label}</h2>
-                <p className="text-sm text-gray-600">{columnLeads.length} leads</p>
+              <div className="bg-gray-100 rounded-lg p-3 mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className={`font-bold text-xs uppercase tracking-wide ${column.color}`}>
+                    {column.label}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-600">{columnLeads.length}</span>
+                    <button className="p-1 hover:bg-gray-200 rounded transition">
+                      <Plus className="w-4 h-4 text-blue-600" />
+                    </button>
+                    <button onClick={loadLeads} className="p-1 hover:bg-gray-200 rounded transition">
+                      <RefreshCw className="w-4 h-4 text-gray-600" />
+                    </button>
+                  </div>
+                </div>
+                {totalValue > 0 && (
+                  <p className="text-sm font-bold text-gray-900">{formatCurrency(totalValue)}</p>
+                )}
               </div>
 
-              <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
-                {columnLeads.map((lead) => (
-                  <div
-                    key={lead.id}
-                    draggable
-                    onDragStart={() => handleDragStart(lead.id)}
-                    onClick={() => openLeadDetail(lead)}
-                    className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900 text-sm mb-1">
-                          {lead.full_name}
-                        </h3>
-                        {lead.campaign && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                            {lead.campaign.length > 15 ? lead.campaign.substring(0, 15) + '...' : lead.campaign}
-                          </span>
+              <div className="space-y-2.5 max-h-[calc(100vh-240px)] overflow-y-auto pr-1 styled-scrollbar">
+                {columnLeads.map((lead) => {
+                  const initials = lead.full_name
+                    .split(' ')
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase();
+
+                  return (
+                    <div
+                      key={lead.id}
+                      draggable
+                      onDragStart={() => handleDragStart(lead.id)}
+                      onClick={() => openLeadDetail(lead)}
+                      className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 cursor-pointer hover:shadow-md hover:border-gray-300 transition-all group"
+                    >
+                      <div className="flex items-start gap-3 mb-2.5">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
+                          lead.classification === 'estrategico' ? 'bg-green-500' :
+                          lead.classification === 'qualificado' ? 'bg-yellow-500' :
+                          'bg-gray-400'
+                        }`}>
+                          {initials}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-blue-600 text-sm mb-0.5 group-hover:underline truncate">
+                            {lead.full_name}
+                          </h3>
+                          <p className="text-xs text-gray-600 truncate">{lead.phone}</p>
+                        </div>
+                        {lead.deal_value && lead.deal_value > 0 && (
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-gray-900">
+                              {formatCurrency(lead.deal_value)}
+                            </p>
+                          </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5 ml-2">
-                        <div className={`w-2 h-2 rounded-full ${getClassificationBadge(lead.classification)}`} />
-                      </div>
-                    </div>
 
-                    <div className="space-y-1.5 text-xs text-gray-600 mb-3">
-                      <div className="flex items-center gap-1.5">
-                        <Phone className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate">{lead.phone}</span>
+                      <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>{formatDate(lead.created_at)}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span>0</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          <span>0/0</span>
+                        </div>
                       </div>
-                      {lead.email && (
-                        <div className="flex items-center gap-1.5">
-                          <Mail className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{lead.email}</span>
+
+                      {lead.campaign && (
+                        <div className="mb-2">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 border border-gray-200 truncate max-w-full">
+                            {lead.campaign}
+                          </span>
                         </div>
                       )}
-                    </div>
 
-                    {(lead.utm_source || lead.utm_medium) && (
-                      <div className="mb-3 flex flex-wrap gap-1">
-                        {lead.utm_source && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
-                            {lead.utm_source}
+                      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                        <div className="flex items-center gap-1">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                            AA
                           </span>
+                        </div>
+                        {lead.classification === 'estrategico' && (
+                          <div className="flex items-center gap-1 text-xs font-medium text-green-600">
+                            <TrendingUp className="w-3 h-3" />
+                            Alta prioridade
+                          </div>
                         )}
-                        {lead.utm_medium && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
-                            {lead.utm_medium}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between pt-2.5 border-t border-gray-100">
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <Calendar className="w-3 h-3" />
-                        <span>{formatDate(lead.created_at)}</span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-gray-500">
-                        <Clock className="w-3 h-3" />
-                        <span>{formatRelativeTime(lead.updated_at)}</span>
                       </div>
                     </div>
-
-                    {lead.classification === 'estrategico' && (
-                      <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
-                        <TrendingUp className="w-3 h-3" />
-                        Prioritário
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
 
                 {columnLeads.length === 0 && (
-                  <div className="text-center py-8 text-gray-400 text-sm">
-                    Arraste leads aqui
+                  <div className="text-center py-12 text-gray-400 text-sm">
+                    Nenhum lead
                   </div>
                 )}
               </div>
@@ -676,6 +728,23 @@ export default function Pipeline() {
           );
         })}
       </div>
+
+      <style>{`
+        .styled-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .styled-scrollbar::-webkit-scrollbar-track {
+          background: #f1f1f1;
+          border-radius: 3px;
+        }
+        .styled-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e0;
+          border-radius: 3px;
+        }
+        .styled-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #a0aec0;
+        }
+      `}</style>
     </div>
   );
 }
