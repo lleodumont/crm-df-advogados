@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Calendar, Clock, MapPin, Phone, Mail, User, Plus, X, CheckCircle, AlertCircle, Circle, List, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, MapPin, Phone, Mail, User, Plus, X, CheckCircle, AlertCircle, Circle, List, ChevronLeft, ChevronRight, Edit, Eye } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 type ActivityType = 'meeting' | 'call' | 'task' | 'email' | 'follow_up';
@@ -51,6 +51,9 @@ export default function Agenda() {
   const [filterType, setFilterType] = useState<'all' | ActivityType>('all');
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedActivity, setSelectedActivity] = useState<ScheduledActivity | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState<Partial<ScheduledActivity>>({});
 
   const [newActivity, setNewActivity] = useState<NewActivity>({
     lead_id: '',
@@ -168,6 +171,50 @@ export default function Agenda() {
     } else {
       fetchActivities();
     }
+  };
+
+  const handleEditActivity = (activity: ScheduledActivity) => {
+    setSelectedActivity(activity);
+    setEditForm({
+      activity_type: activity.activity_type,
+      title: activity.title,
+      description: activity.description || '',
+      scheduled_at: activity.scheduled_at.slice(0, 16),
+      priority: activity.priority,
+      location: activity.location || '',
+      duration_minutes: activity.duration_minutes || 0,
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedActivity) return;
+
+    const { error } = await supabase
+      .from('scheduled_activities')
+      .update({
+        activity_type: editForm.activity_type,
+        title: editForm.title,
+        description: editForm.description,
+        scheduled_at: editForm.scheduled_at,
+        priority: editForm.priority,
+        location: editForm.location,
+        duration_minutes: editForm.duration_minutes,
+      })
+      .eq('id', selectedActivity.id);
+
+    if (error) {
+      console.error('Error updating activity:', error);
+      alert('Erro ao atualizar atividade');
+    } else {
+      setShowEditModal(false);
+      setSelectedActivity(null);
+      fetchActivities();
+    }
+  };
+
+  const goToLeadDetail = (leadId: string) => {
+    window.location.href = `/leads/${leadId}`;
   };
 
   const formatDateTime = (dateString: string) => {
@@ -317,6 +364,7 @@ export default function Agenda() {
                 key={activity.id}
                 className={`text-xs p-1.5 rounded cursor-pointer hover:opacity-80 transition-opacity ${getActivityTypeColor(activity.activity_type)}`}
                 title={`${activity.title} - ${new Date(activity.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+                onClick={() => setSelectedActivity(activity)}
               >
                 <div className="font-medium truncate">
                   {new Date(activity.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} {activity.title}
@@ -509,24 +557,40 @@ export default function Agenda() {
                           )}
                         </div>
                       </div>
-                      {activity.status === 'scheduled' && (
-                        <div className="flex gap-2 ml-4">
-                          <button
-                            onClick={() => handleCompleteActivity(activity.id)}
-                            className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
-                            title="Concluir"
-                          >
-                            <CheckCircle className="w-5 h-5" />
-                          </button>
-                          <button
-                            onClick={() => handleCancelActivity(activity.id)}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
-                            title="Cancelar"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex gap-2 ml-4">
+                        <button
+                          onClick={() => handleEditActivity(activity)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          title="Editar"
+                        >
+                          <Edit className="w-5 h-5" />
+                        </button>
+                        <button
+                          onClick={() => goToLeadDetail(activity.lead_id)}
+                          className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                          title="Ver Lead"
+                        >
+                          <Eye className="w-5 h-5" />
+                        </button>
+                        {activity.status === 'scheduled' && (
+                          <>
+                            <button
+                              onClick={() => handleCompleteActivity(activity.id)}
+                              className="p-1.5 text-green-600 hover:bg-green-50 rounded transition-colors"
+                              title="Concluir"
+                            >
+                              <CheckCircle className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={() => handleCancelActivity(activity.id)}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                              title="Cancelar"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-gray-600">
@@ -581,6 +645,268 @@ export default function Agenda() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {selectedActivity && !showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedActivity(null)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">Detalhes da Atividade</h2>
+              <button
+                onClick={() => setSelectedActivity(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">{selectedActivity.title}</h3>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <span className={`inline-flex items-center px-2 py-1 rounded text-sm font-medium ${getActivityTypeColor(selectedActivity.activity_type)}`}>
+                    {getActivityTypeLabel(selectedActivity.activity_type)}
+                  </span>
+                  <span className={`inline-flex items-center px-2 py-1 rounded text-sm font-medium ${getPriorityColor(selectedActivity.priority)}`}>
+                    {getPriorityLabel(selectedActivity.priority)}
+                  </span>
+                  <span className={`inline-flex items-center px-2 py-1 rounded text-sm font-medium ${
+                    selectedActivity.status === 'completed' ? 'bg-green-100 text-green-800' :
+                    selectedActivity.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                    selectedActivity.status === 'overdue' ? 'bg-orange-100 text-orange-800' :
+                    'bg-blue-100 text-blue-800'
+                  }`}>
+                    {selectedActivity.status === 'completed' ? 'Concluída' :
+                     selectedActivity.status === 'cancelled' ? 'Cancelada' :
+                     selectedActivity.status === 'overdue' ? 'Atrasada' : 'Agendada'}
+                  </span>
+                </div>
+              </div>
+
+              {selectedActivity.description && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Descrição</h4>
+                  <p className="text-sm text-gray-600">{selectedActivity.description}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-700 mb-1">Data e Hora</h4>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Clock className="w-4 h-4" />
+                    {formatDateTime(selectedActivity.scheduled_at)}
+                  </div>
+                </div>
+
+                {selectedActivity.duration_minutes && (
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-1">Duração</h4>
+                    <div className="text-sm text-gray-600">{selectedActivity.duration_minutes} minutos</div>
+                  </div>
+                )}
+
+                {selectedActivity.location && (
+                  <div className="md:col-span-2">
+                    <h4 className="text-sm font-medium text-gray-700 mb-1">Local / Link</h4>
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <MapPin className="w-4 h-4" />
+                      {selectedActivity.location}
+                    </div>
+                  </div>
+                )}
+
+                {selectedActivity.lead && (
+                  <div className="md:col-span-2 pt-4 border-t">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Informações do Lead</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <User className="w-4 h-4" />
+                        {selectedActivity.lead.full_name}
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Phone className="w-4 h-4" />
+                        {selectedActivity.lead.phone}
+                      </div>
+                      {selectedActivity.lead.email && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Mail className="w-4 h-4" />
+                          {selectedActivity.lead.email}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {selectedActivity.notes && (
+                  <div className="md:col-span-2 pt-4 border-t">
+                    <h4 className="text-sm font-medium text-gray-700 mb-1">Notas</h4>
+                    <p className="text-sm text-gray-600">{selectedActivity.notes}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 pt-6 border-t">
+                <button
+                  onClick={() => goToLeadDetail(selectedActivity.lead_id)}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  <Eye className="w-5 h-5" />
+                  Ver Lead Completo
+                </button>
+                <button
+                  onClick={() => {
+                    handleEditActivity(selectedActivity);
+                    setSelectedActivity(null);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Edit className="w-5 h-5" />
+                  Editar Atividade
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowEditModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
+              <h2 className="text-2xl font-bold text-gray-900">Editar Atividade</h2>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Tipo *
+                  </label>
+                  <select
+                    value={editForm.activity_type}
+                    onChange={(e) => setEditForm({ ...editForm, activity_type: e.target.value as ActivityType })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="meeting">Reunião</option>
+                    <option value="call">Ligação</option>
+                    <option value="task">Tarefa</option>
+                    <option value="email">E-mail</option>
+                    <option value="follow_up">Follow-up</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Prioridade *
+                  </label>
+                  <select
+                    value={editForm.priority}
+                    onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as ActivityPriority })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="low">Baixa</option>
+                    <option value="medium">Média</option>
+                    <option value="high">Alta</option>
+                    <option value="urgent">Urgente</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Título *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ex: Reunião de apresentação"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Descrição
+                </label>
+                <textarea
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={3}
+                  placeholder="Detalhes da atividade..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Data e Hora *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    required
+                    value={editForm.scheduled_at}
+                    onChange={(e) => setEditForm({ ...editForm, scheduled_at: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Duração (minutos)
+                  </label>
+                  <input
+                    type="number"
+                    value={editForm.duration_minutes}
+                    onChange={(e) => setEditForm({ ...editForm, duration_minutes: parseInt(e.target.value) })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="30"
+                    min="1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Local / Link
+                </label>
+                <input
+                  type="text"
+                  value={editForm.location}
+                  onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Ex: Escritório ou https://meet.google.com/..."
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
