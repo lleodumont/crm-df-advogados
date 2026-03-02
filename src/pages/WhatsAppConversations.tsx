@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { MessageCircle, Search, User, Clock, Phone } from 'lucide-react';
+import { MessageCircle, Search, User, Clock, Phone, X, ArrowLeft } from 'lucide-react';
+import WhatsAppChat from '../components/WhatsAppChat';
 
 interface Conversation {
   lead_id: string;
@@ -16,6 +17,7 @@ export default function WhatsAppConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   useEffect(() => {
     loadConversations();
@@ -139,6 +141,33 @@ export default function WhatsAppConversations() {
     );
   }
 
+  if (selectedConversation) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setSelectedConversation(null)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {selectedConversation.lead_name}
+            </h1>
+            <p className="text-sm text-gray-500">{selectedConversation.lead_phone}</p>
+          </div>
+        </div>
+
+        <WhatsAppChat
+          leadId={selectedConversation.lead_id}
+          leadPhone={selectedConversation.lead_phone}
+          leadName={selectedConversation.lead_name}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -173,10 +202,10 @@ export default function WhatsAppConversations() {
             </div>
           ) : (
             filteredConversations.map((conversation) => (
-              <a
+              <button
                 key={conversation.lead_id}
-                href={`/leads/${conversation.lead_id}`}
-                className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => setSelectedConversation(conversation)}
+                className="w-full flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer text-left"
               >
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
                   <User className="w-6 h-6 text-green-600" />
@@ -214,7 +243,7 @@ export default function WhatsAppConversations() {
                     )}
                   </div>
                 </div>
-              </a>
+              </button>
             ))
           )}
         </div>
