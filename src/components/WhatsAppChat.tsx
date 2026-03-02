@@ -403,20 +403,6 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
             )}
           </button>
         </div>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button className="px-3 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full hover:bg-blue-100 transition">
-            Form-Meta-Divorcio
-          </button>
-          <button className="px-3 py-1 text-xs bg-green-50 text-green-700 border border-green-200 rounded-full hover:bg-green-100 transition">
-            Ana SDR
-          </button>
-          <button className="px-3 py-1 text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full hover:bg-yellow-100 transition">
-            Previamente Qualificado
-          </button>
-          <button className="px-3 py-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-full hover:bg-purple-100 transition">
-            Cliente-Ativo
-          </button>
-        </div>
       </div>
     </div>
   );
