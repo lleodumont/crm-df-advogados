@@ -27,15 +27,23 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const authHeader = req.headers.get("Authorization");
+    console.log("Auth header present:", !!authHeader);
+
     if (!authHeader) {
-      throw new Error("Missing authorization header");
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const { instanceId, phoneNumber, message, leadId }: SendMessageRequest = await req.json();
     console.log("Received request:", { instanceId, phoneNumber, leadId, messageLength: message.length });
 
     if (!instanceId || !phoneNumber || !message) {
-      throw new Error("Missing required fields: instanceId, phoneNumber, message");
+      return new Response(
+        JSON.stringify({ error: "Missing required fields: instanceId, phoneNumber, message" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const cleanPhone = phoneNumber.replace(/\D/g, "");
@@ -45,15 +53,28 @@ Deno.serve(async (req: Request) => {
     const { createClient } = await import("npm:@supabase/supabase-js@2.57.4");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { data: userData, error: userError } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
-
-    if (userError) {
-      console.error("Auth error:", userError);
-      throw userError;
+    // Get user ID from JWT (already validated by Supabase since verifyJWT=true)
+    const token = authHeader.replace("Bearer ", "");
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return new Response(
+        JSON.stringify({ error: "Invalid token format" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
-    console.log("User authenticated:", userData.user.id);
+
+    let userId;
+    try {
+      const payload = JSON.parse(atob(parts[1]));
+      userId = payload.sub;
+      console.log("User ID from JWT:", userId);
+    } catch (e) {
+      console.error("Failed to decode JWT:", e);
+      return new Response(
+        JSON.stringify({ error: "Invalid token" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const { data: instance, error: instanceError } = await supabase
       .from("whatsapp_instances")
@@ -123,7 +144,7 @@ Deno.serve(async (req: Request) => {
         direction: "outbound",
         status: "sent",
         external_id: responseData.messageId || responseData.id,
-        sent_by: userData.user.id,
+        sent_by: userId,
       })
       .select()
       .single();
