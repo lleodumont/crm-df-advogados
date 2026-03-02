@@ -151,7 +151,7 @@ Deno.serve(async (req: Request) => {
       const uazapiData = await uazapiResponse.json();
       console.log("UazAPI instance created:", uazapiData);
 
-      // Salva no banco com o token retornado pela UazAPI
+      // Salva no banco com o token e API URL
       const { data: instance, error: insertError } = await supabase
         .from("whatsapp_instances")
         .insert({
@@ -161,6 +161,7 @@ Deno.serve(async (req: Request) => {
           created_by: userData.user.id,
           // Salva o token da instância retornado pela UazAPI
           token: uazapiData.token || null,
+          api_url: UAZAPI_BASE_URL,
         })
         .select()
         .single();
