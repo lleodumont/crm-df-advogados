@@ -16,8 +16,13 @@ export default function WhatsAppSettings() {
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showConnectExistingModal, setShowConnectExistingModal] = useState(false);
   const [newInstanceName, setNewInstanceName] = useState('');
   const [newInstanceId, setNewInstanceId] = useState('');
+  const [existingInstanceName, setExistingInstanceName] = useState('');
+  const [existingInstanceId, setExistingInstanceId] = useState('');
+  const [existingApiUrl, setExistingApiUrl] = useState('');
+  const [existingApiKey, setExistingApiKey] = useState('');
   const [selectedQR, setSelectedQR] = useState<{ instanceId: string; qrCode: string } | null>(null);
 
   useEffect(() => {
@@ -189,6 +194,43 @@ export default function WhatsAppSettings() {
     }
   };
 
+  const connectExistingInstance = async () => {
+    if (!existingInstanceName.trim() || !existingInstanceId.trim() || !existingApiUrl.trim() || !existingApiKey.trim()) {
+      alert('Preencha todos os campos');
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('whatsapp_instances')
+        .insert({
+          name: existingInstanceName,
+          instance_id: existingInstanceId,
+          status: 'connected',
+          created_by: user.id,
+          token: existingApiKey,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      alert('Instância conectada com sucesso!');
+      setShowConnectExistingModal(false);
+      setExistingInstanceName('');
+      setExistingInstanceId('');
+      setExistingApiUrl('');
+      setExistingApiKey('');
+      loadInstances();
+    } catch (error) {
+      console.error('Error connecting existing instance:', error);
+      alert('Erro ao conectar instância: ' + (error as Error).message);
+    }
+  };
+
   const deleteInstance = async (id: string) => {
     if (!confirm('Deseja excluir esta instância?')) return;
 
@@ -239,13 +281,22 @@ export default function WhatsAppSettings() {
           <h1 className="text-2xl font-bold text-gray-900">WhatsApp - Configurações</h1>
           <p className="text-gray-600 mt-1">Gerencie as conexões do WhatsApp via UazAPI</p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
-        >
-          <Plus className="w-5 h-5" />
-          Nova Instância
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowConnectExistingModal(true)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+          >
+            <Smartphone className="w-5 h-5" />
+            Conectar Existente
+          </button>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
+          >
+            <Plus className="w-5 h-5" />
+            Nova Instância
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -304,6 +355,101 @@ export default function WhatsAppSettings() {
           <Smartphone className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <p className="text-gray-600">Nenhuma instância configurada</p>
           <p className="text-gray-500 text-sm mt-1">Clique em "Nova Instância" para começar</p>
+        </div>
+      )}
+
+      {showConnectExistingModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Conectar Instância Existente</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Conecte uma instância já configurada no UazAPI
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nome da Instância
+                </label>
+                <input
+                  type="text"
+                  value={existingInstanceName}
+                  onChange={(e) => setExistingInstanceName(e.target.value)}
+                  placeholder="Ex: WhatsApp Principal"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Instance ID
+                </label>
+                <input
+                  type="text"
+                  value={existingInstanceId}
+                  onChange={(e) => setExistingInstanceId(e.target.value)}
+                  placeholder="Ex: minha-instancia"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  O ID da instância configurada no UazAPI
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  URL da API
+                </label>
+                <input
+                  type="text"
+                  value={existingApiUrl}
+                  onChange={(e) => setExistingApiUrl(e.target.value)}
+                  placeholder="Ex: https://api.uazapi.com"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  URL base da sua instância UazAPI
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  value={existingApiKey}
+                  onChange={(e) => setExistingApiKey(e.target.value)}
+                  placeholder="Sua chave de API"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Token de autenticação da instância
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowConnectExistingModal(false);
+                  setExistingInstanceName('');
+                  setExistingInstanceId('');
+                  setExistingApiUrl('');
+                  setExistingApiKey('');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={connectExistingInstance}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Conectar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
