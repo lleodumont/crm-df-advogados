@@ -101,13 +101,11 @@ Deno.serve(async (req: Request) => {
 
     console.log("Instance found:", instance.id);
 
-    // UAZapi endpoint for sending messages - Evolution API v2 format
-    const apiUrl = `${instance.api_url}/message/sendText`;
+    // UAZapi endpoint for sending messages - correct format
+    const apiUrl = `${instance.api_url}/send/text`;
     const payload = {
       number: formattedPhone,
-      textMessage: {
-        text: message
-      }
+      text: message
     };
 
     console.log("Sending to UAZapi:", { url: apiUrl, number: formattedPhone, payload });
@@ -117,7 +115,7 @@ Deno.serve(async (req: Request) => {
       headers: {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "apikey": instance.token,
+        "token": instance.token,
       },
       body: JSON.stringify(payload),
     });
