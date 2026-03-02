@@ -28,6 +28,7 @@ export default function Pipeline() {
   const [showNewLeadModal, setShowNewLeadModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [leadAnswers, setLeadAnswers] = useState<LeadAnswer[]>([]);
+  const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
   const [newLead, setNewLead] = useState({
     full_name: '',
     phone: '',
@@ -40,6 +41,19 @@ export default function Pipeline() {
   useEffect(() => {
     loadLeads();
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (showActionMenu) {
+        setShowActionMenu(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showActionMenu]);
 
   const loadLeads = async () => {
     setLoading(true);
@@ -94,9 +108,16 @@ export default function Pipeline() {
   const handleDrop = (e: React.DragEvent, status: LeadStatus) => {
     e.preventDefault();
     if (draggedLead) {
-      updateLeadStatus(draggedLead, status);
+      const lead = leads.find(l => l.id === draggedLead);
+      if (lead && lead.status !== status) {
+        updateLeadStatus(draggedLead, status);
+      }
       setDraggedLead(null);
     }
+  };
+
+  const openWhatsAppChat = (lead: Lead) => {
+    window.location.href = `/whatsapp?lead=${lead.id}`;
   };
 
   const getClassificationBadge = (classification: LeadClassification) => {
@@ -614,11 +635,19 @@ export default function Pipeline() {
           return (
             <div
               key={column.status}
-              className="flex-shrink-0 w-[340px]"
+              className={`flex-shrink-0 w-[340px] transition-all ${
+                draggedLead && leads.find(l => l.id === draggedLead)?.status !== column.status
+                  ? 'ring-2 ring-blue-400 ring-opacity-50 rounded-lg'
+                  : ''
+              }`}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, column.status)}
             >
-              <div className="bg-gray-100 rounded-lg p-3 mb-3">
+              <div className={`rounded-lg p-3 mb-3 transition-all ${
+                draggedLead && leads.find(l => l.id === draggedLead)?.status !== column.status
+                  ? 'bg-blue-50 border-2 border-blue-300'
+                  : 'bg-gray-100'
+              }`}>
                 <div className="flex items-center justify-between mb-1">
                   <h2 className={`font-bold text-xs uppercase tracking-wide ${column.color}`}>
                     {column.label}
@@ -650,11 +679,19 @@ export default function Pipeline() {
                   return (
                     <div
                       key={lead.id}
-                      draggable
-                      onDragStart={() => handleDragStart(lead.id)}
-                      onClick={() => openLeadDetail(lead)}
-                      className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 cursor-pointer hover:shadow-md hover:border-gray-300 transition-all group"
+                      className="relative"
                     >
+                      <div
+                        draggable
+                        onDragStart={() => handleDragStart(lead.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowActionMenu(showActionMenu === lead.id ? null : lead.id);
+                        }}
+                        className={`bg-white rounded-lg shadow-sm border p-3 cursor-move hover:shadow-md transition-all group ${
+                          draggedLead === lead.id ? 'opacity-50 border-blue-500' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
                       <div className="flex items-start gap-3 mb-2.5">
                         <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
                           lead.classification === 'estrategico' ? 'bg-green-500' :
@@ -714,6 +751,43 @@ export default function Pipeline() {
                           </div>
                         )}
                       </div>
+                      </div>
+
+                      {showActionMenu === lead.id && (
+                        <div
+                          className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openWhatsAppChat(lead);
+                              setShowActionMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100"
+                          >
+                            <MessageCircle className="w-5 h-5 text-green-600" />
+                            <div>
+                              <div className="font-medium text-gray-900 text-sm">Abrir Chat</div>
+                              <div className="text-xs text-gray-500">Conversar via WhatsApp</div>
+                            </div>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openLeadDetail(lead);
+                              setShowActionMenu(null);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors"
+                          >
+                            <FileText className="w-5 h-5 text-blue-600" />
+                            <div>
+                              <div className="font-medium text-gray-900 text-sm">Ver Detalhes</div>
+                              <div className="text-xs text-gray-500">Informações completas do lead</div>
+                            </div>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
