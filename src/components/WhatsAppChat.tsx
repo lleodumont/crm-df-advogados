@@ -48,7 +48,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
           event: 'INSERT',
           schema: 'public',
           table: 'whatsapp_messages',
-          filter: `phone_number=eq.${leadPhone.replace(/\D/g, '')}`
+          filter: `lead_id=eq.${leadId}`
         },
         () => {
           loadMessages();
@@ -59,7 +59,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [leadPhone]);
+  }, [leadId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -91,12 +91,16 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
   const loadMessages = async () => {
     try {
       const cleanPhone = leadPhone.replace(/\D/g, '');
-      const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+      const phoneVariations = [
+        cleanPhone,
+        cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`,
+        cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone,
+      ];
 
       const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('*')
-        .eq('phone_number', formattedPhone)
+        .or(`phone_number.in.(${phoneVariations.join(',')}),lead_id.eq.${leadId}`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;

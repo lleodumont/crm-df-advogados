@@ -14,12 +14,13 @@ export default function Layout({ children }: LayoutProps) {
   const navItems = [
     { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/leads', icon: Users, label: 'Leads' },
+    { href: '/whatsapp-conversations', icon: MessageCircle, label: 'Conversas' },
     { href: '/pipeline', icon: GitBranch, label: 'Pipeline' },
     { href: '/agenda', icon: Calendar, label: 'Agenda' },
     { href: '/instructions', icon: BookOpen, label: 'Instruções' },
     { href: '/report', icon: FileText, label: 'Relatório Semanal' },
     { href: '/leads/import', icon: Upload, label: 'Importar Leads' },
-    ...(profile?.role === 'admin' || profile?.role === 'manager' ? [{ href: '/whatsapp-settings', icon: MessageCircle, label: 'WhatsApp' }] : []),
+    ...(profile?.role === 'admin' || profile?.role === 'manager' ? [{ href: '/whatsapp-settings', icon: MessageCircle, label: 'Config WhatsApp' }] : []),
     ...(profile?.role === 'admin' ? [{ href: '/users', icon: UserCog, label: 'Usuários' }] : []),
   ];
 

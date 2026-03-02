@@ -10,6 +10,7 @@ import Users from './pages/Users';
 import Agenda from './pages/Agenda';
 import Instructions from './pages/Instructions';
 import WhatsAppSettings from './pages/WhatsAppSettings';
+import WhatsAppConversations from './pages/WhatsAppConversations';
 import Layout from './components/Layout';
 
 function Router() {
@@ -27,6 +28,7 @@ function Router() {
   if (path === '/instructions') return <Instructions />;
   if (path === '/report') return <WeeklyReport />;
   if (path === '/whatsapp-settings') return <WhatsAppSettings />;
+  if (path === '/whatsapp-conversations') return <WhatsAppConversations />;
   if (path === '/users') return <Users />;
 
   return <Dashboard />;
