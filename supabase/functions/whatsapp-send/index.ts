@@ -27,7 +27,10 @@ Deno.serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const authHeader = req.headers.get("Authorization");
+    const apikeyHeader = req.headers.get("apikey");
     console.log("Auth header present:", !!authHeader);
+    console.log("Apikey header present:", !!apikeyHeader);
+    console.log("All headers:", Array.from(req.headers.entries()).map(([k, v]) => `${k}: ${k.toLowerCase().includes('auth') || k.toLowerCase().includes('key') ? v.substring(0, 20) + '...' : v}`));
 
     if (!authHeader) {
       return new Response(
