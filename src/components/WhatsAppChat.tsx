@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Phone, RefreshCw, MessageCircle } from 'lucide-react';
+import { Send, Phone, RefreshCw, MessageCircle, User, CheckCheck, Check, Folder, CheckCircle, Info } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Message {
   id: string;
@@ -28,12 +29,14 @@ interface Props {
 }
 
 export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
+  const { profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<string>('');
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -224,41 +227,58 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
   const groupedMessages = groupMessagesByDate();
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col" style={{ height: '600px' }}>
-      <div className="bg-green-600 text-white px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-            <Phone className="w-5 h-5 text-green-600" />
+    <div className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col" style={{ height: '700px' }}>
+      <div className="bg-gray-50 border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+            <span className="text-lg font-bold text-blue-700">
+              {leadName.split(' ').map(n => n[0]).slice(0, 2).join('')}
+            </span>
           </div>
           <div>
-            <div className="font-semibold">{leadName}</div>
-            <div className="text-xs text-green-100">{leadPhone}</div>
+            <div className="font-semibold text-gray-900 text-lg">{leadName}</div>
+            <div className="text-sm text-gray-500 flex items-center gap-2">
+              <Phone className="w-3 h-3" />
+              {leadPhone}
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button className="p-2 hover:bg-gray-200 rounded-lg transition text-gray-600">
+            <CheckCircle className="w-5 h-5" />
+          </button>
+          <button className="px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 rounded-lg transition flex items-center gap-1.5">
+            AA
+          </button>
+          <button className="p-2 hover:bg-gray-200 rounded-lg transition text-gray-600">
+            <Folder className="w-5 h-5" />
+          </button>
           {instances.length > 1 && (
             <select
               value={selectedInstance}
               onChange={(e) => setSelectedInstance(e.target.value)}
-              className="px-3 py-1 text-sm bg-green-700 text-white rounded border border-green-500 focus:outline-none focus:ring-2 focus:ring-white"
+              className="px-3 py-1.5 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               {instances.map((instance) => (
                 <option key={instance.id} value={instance.instance_id}>
-                  {instance.name} ({instance.phone_number})
+                  {instance.name}
                 </option>
               ))}
             </select>
           )}
           <button
             onClick={loadMessages}
-            className="p-2 hover:bg-green-700 rounded-full transition"
+            className="p-2 hover:bg-gray-200 rounded-lg transition text-gray-600"
           >
             <RefreshCw className="w-4 h-4" />
+          </button>
+          <button className="p-2 hover:bg-gray-200 rounded-lg transition text-gray-600">
+            <Info className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto bg-white p-6 space-y-2">
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
@@ -266,95 +286,135 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
         ) : Object.keys(groupedMessages).length === 0 ? (
           <div className="flex items-center justify-center h-full text-gray-500">
             <div className="text-center">
-              <MessageCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p>Nenhuma mensagem ainda</p>
-              <p className="text-sm mt-1">Envie a primeira mensagem para iniciar a conversa</p>
+              <MessageCircle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-lg font-medium">Nenhuma mensagem ainda</p>
+              <p className="text-sm mt-2">Envie a primeira mensagem para iniciar a conversa</p>
             </div>
           </div>
         ) : (
           Object.entries(groupedMessages).map(([date, msgs]) => (
             <div key={date}>
-              <div className="flex items-center justify-center my-4">
-                <div className="bg-white px-3 py-1 rounded-full shadow-sm text-xs text-gray-600">
+              <div className="flex items-center justify-center my-6">
+                <div className="bg-gray-100 px-4 py-1 rounded-full text-xs text-gray-600 font-medium">
                   {formatDate(msgs[0].created_at)}
                 </div>
               </div>
-              {msgs.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.direction === 'outbound' ? 'justify-end' : 'justify-start'} mb-2`}
-                >
+              {msgs.map((message, index) => {
+                const isFromLead = message.direction === 'inbound';
+                const showName = isFromLead && (index === 0 || msgs[index - 1].direction !== 'inbound');
+                const showAvatar = isFromLead && (index === msgs.length - 1 || msgs[index + 1]?.direction !== 'inbound');
+
+                return (
                   <div
-                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                      message.direction === 'outbound'
-                        ? 'bg-green-500 text-white'
-                        : 'bg-white text-gray-900 shadow-sm'
-                    }`}
+                    key={message.id}
+                    className={`flex ${isFromLead ? 'justify-start' : 'justify-end'} mb-1 ${!showAvatar && isFromLead ? 'ml-12' : ''}`}
                   >
-                    {message.media_url && (
-                      <div className="mb-2">
-                        {message.message_type === 'image' && (
-                          <img src={message.media_url} alt="Image" className="rounded max-w-full" />
-                        )}
-                        {message.message_type === 'video' && (
-                          <video src={message.media_url} controls className="rounded max-w-full" />
-                        )}
-                        {message.message_type === 'audio' && (
-                          <audio src={message.media_url} controls className="w-full" />
-                        )}
-                        {message.message_type === 'document' && (
-                          <a
-                            href={message.media_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline"
-                          >
-                            Baixar documento
-                          </a>
-                        )}
+                    {isFromLead && showAvatar && (
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-2 flex-shrink-0 self-end">
+                        <span className="text-sm font-bold text-blue-700">
+                          {leadName.split(' ').map(n => n[0]).slice(0, 2).join('')}
+                        </span>
                       </div>
                     )}
-                    <div className="break-words">{message.content}</div>
-                    <div
-                      className={`text-xs mt-1 ${
-                        message.direction === 'outbound' ? 'text-green-100' : 'text-gray-500'
-                      }`}
-                    >
-                      {formatTime(message.created_at)}
-                      {message.direction === 'outbound' && message.status === 'sent' && ' ✓'}
-                      {message.direction === 'outbound' && message.status === 'delivered' && ' ✓✓'}
-                      {message.direction === 'outbound' && message.status === 'read' && ' ✓✓'}
+                    {isFromLead && !showAvatar && <div className="w-10 mr-2 flex-shrink-0" />}
+                    <div className={`flex flex-col ${isFromLead ? 'items-start' : 'items-end'} max-w-lg`}>
+                      {showName && (
+                        <div className="text-xs font-medium text-gray-700 mb-1 px-1">{leadName}</div>
+                      )}
+                      <div
+                        className={`px-4 py-2 rounded-lg ${
+                          isFromLead
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'bg-blue-500 text-white'
+                        } ${!showAvatar && !isFromLead ? 'rounded-br-sm' : ''} ${!showAvatar && isFromLead ? 'rounded-bl-sm' : ''}`}
+                      >
+                        {message.media_url && (
+                          <div className="mb-2">
+                            {message.message_type === 'image' && (
+                              <img src={message.media_url} alt="Image" className="rounded max-w-full" />
+                            )}
+                            {message.message_type === 'video' && (
+                              <video src={message.media_url} controls className="rounded max-w-full" />
+                            )}
+                            {message.message_type === 'audio' && (
+                              <audio src={message.media_url} controls className="w-full" />
+                            )}
+                            {message.message_type === 'document' && (
+                              <a
+                                href={message.media_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline"
+                              >
+                                Baixar documento
+                              </a>
+                            )}
+                          </div>
+                        )}
+                        <div className="break-words whitespace-pre-wrap">{message.content}</div>
+                      </div>
+                      <div className={`text-xs text-gray-500 mt-1 px-1 flex items-center gap-1`}>
+                        {!isFromLead && profile?.full_name && <span className="font-medium">{profile.full_name.split(' ')[0]}</span>}
+                        <span>{formatTime(message.created_at)}</span>
+                        {!isFromLead && (
+                          <span className="flex items-center">
+                            {message.status === 'sent' && <Check className="w-3 h-3" />}
+                            {(message.status === 'delivered' || message.status === 'read') && <CheckCheck className="w-3 h-3" />}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ))
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="border-t border-gray-200 p-4 bg-white">
-        <div className="flex gap-2">
-          <input
-            type="text"
+      <div className="border-t border-gray-200 px-4 py-3 bg-gray-50">
+        <div className="flex items-end gap-2">
+          <textarea
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && !sending && sendMessage()}
-            placeholder="Digite uma mensagem..."
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !sending) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="Shift + Enter para nova linha. &quot;/&quot; para frase rápida."
             disabled={sending || instances.length === 0}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-100"
+            rows={1}
+            className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-200 resize-none"
+            style={{ minHeight: '42px', maxHeight: '120px' }}
           />
           <button
             onClick={sendMessage}
             disabled={sending || !newMessage.trim() || instances.length === 0}
-            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+            className="p-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+            style={{ minWidth: '42px', minHeight: '42px' }}
           >
             {sending ? (
               <RefreshCw className="w-5 h-5 animate-spin" />
             ) : (
               <Send className="w-5 h-5" />
             )}
+          </button>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button className="px-3 py-1 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full hover:bg-blue-100 transition">
+            Form-Meta-Divorcio
+          </button>
+          <button className="px-3 py-1 text-xs bg-green-50 text-green-700 border border-green-200 rounded-full hover:bg-green-100 transition">
+            Ana SDR
+          </button>
+          <button className="px-3 py-1 text-xs bg-yellow-50 text-yellow-700 border border-yellow-200 rounded-full hover:bg-yellow-100 transition">
+            Previamente Qualificado
+          </button>
+          <button className="px-3 py-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-full hover:bg-purple-100 transition">
+            Cliente-Ativo
           </button>
         </div>
       </div>
