@@ -22,6 +22,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    console.log("Starting whatsapp-send function");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -31,6 +32,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const { instanceId, phoneNumber, message, leadId }: SendMessageRequest = await req.json();
+    console.log("Received request:", { instanceId, phoneNumber, leadId, messageLength: message.length });
 
     if (!instanceId || !phoneNumber || !message) {
       throw new Error("Missing required fields: instanceId, phoneNumber, message");
@@ -38,6 +40,7 @@ Deno.serve(async (req: Request) => {
 
     const cleanPhone = phoneNumber.replace(/\D/g, "");
     const formattedPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+    console.log("Formatted phone:", formattedPhone);
 
     const { createClient } = await import("npm:@supabase/supabase-js@2.57.4");
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -46,7 +49,11 @@ Deno.serve(async (req: Request) => {
       authHeader.replace("Bearer ", "")
     );
 
-    if (userError) throw userError;
+    if (userError) {
+      console.error("Auth error:", userError);
+      throw userError;
+    }
+    console.log("User authenticated:", userData.user.id);
 
     const { data: instance, error: instanceError } = await supabase
       .from("whatsapp_instances")
@@ -55,30 +62,37 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (instanceError || !instance) {
+      console.error("Instance error:", instanceError);
       throw new Error("WhatsApp instance not found");
     }
 
     if (!instance.token) {
       throw new Error("Instance token not configured. Please update the instance with API credentials.");
     }
+    console.log("Instance found:", instance.id);
 
     const n8nWebhookUrl = "https://webhooks.globalsaleshub.tech/webhook/217e97de-e983-4394-9570-6723b6152917";
+    const webhookPayload = {
+      instanceId,
+      phone: formattedPhone,
+      message,
+      token: instance.token,
+    };
+    console.log("Sending to n8n webhook:", { url: n8nWebhookUrl, payload: { ...webhookPayload, token: "***" } });
 
     const response = await fetch(n8nWebhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        instanceId,
-        phone: formattedPhone,
-        message,
-        token: instance.token,
-      }),
+      body: JSON.stringify(webhookPayload),
     });
+
+    console.log("n8n response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error("n8n error response:", errorText);
       let errorData;
       try {
         errorData = JSON.parse(errorText);
@@ -88,7 +102,15 @@ Deno.serve(async (req: Request) => {
       throw new Error(`n8n webhook error: ${errorData.message || response.statusText}`);
     }
 
-    const responseData = await response.json();
+    let responseData;
+    try {
+      const responseText = await response.text();
+      console.log("n8n raw response:", responseText);
+      responseData = responseText ? JSON.parse(responseText) : {};
+    } catch (e) {
+      console.log("n8n returned non-JSON response, using empty object");
+      responseData = {};
+    }
 
     const { data: savedMessage, error: saveError } = await supabase
       .from("whatsapp_messages")
