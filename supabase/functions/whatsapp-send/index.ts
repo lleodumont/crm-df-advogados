@@ -90,46 +90,53 @@ Deno.serve(async (req: Request) => {
     if (!instance.token) {
       throw new Error("Instance token not configured. Please update the instance with API credentials.");
     }
+
+    if (!instance.api_url) {
+      throw new Error("Instance API URL not configured. Please update the instance.");
+    }
+
     console.log("Instance found:", instance.id);
 
-    const n8nWebhookUrl = "https://webhooks.globalsaleshub.tech/webhook/217e97de-e983-4394-9570-6723b6152917";
-    const webhookPayload = {
-      instanceId,
-      phone: formattedPhone,
-      message,
-      token: instance.token,
+    // UAZapi API endpoint for sending messages
+    const apiUrl = `${instance.api_url}/message/sendText/${instanceId}`;
+    const payload = {
+      number: formattedPhone,
+      text: message,
     };
-    console.log("Sending to n8n webhook:", { url: n8nWebhookUrl, payload: { ...webhookPayload, token: "***" } });
 
-    const response = await fetch(n8nWebhookUrl, {
+    console.log("Sending to UAZapi:", { url: apiUrl, number: formattedPhone });
+
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
+        "Accept": "application/json",
         "Content-Type": "application/json",
+        "token": instance.token,
       },
-      body: JSON.stringify(webhookPayload),
+      body: JSON.stringify(payload),
     });
 
-    console.log("n8n response status:", response.status);
+    console.log("UAZapi response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("n8n error response:", errorText);
+      console.error("UAZapi error response:", errorText);
       let errorData;
       try {
         errorData = JSON.parse(errorText);
       } catch {
-        throw new Error(`n8n webhook error: ${response.statusText} - ${errorText}`);
+        throw new Error(`UAZapi error: ${response.statusText} - ${errorText}`);
       }
-      throw new Error(`n8n webhook error: ${errorData.message || response.statusText}`);
+      throw new Error(`UAZapi error: ${errorData.message || response.statusText}`);
     }
 
     let responseData;
     try {
       const responseText = await response.text();
-      console.log("n8n raw response:", responseText);
+      console.log("UAZapi raw response:", responseText);
       responseData = responseText ? JSON.parse(responseText) : {};
     } catch (e) {
-      console.log("n8n returned non-JSON response, using empty object");
+      console.log("UAZapi returned non-JSON response, using empty object");
       responseData = {};
     }
 
