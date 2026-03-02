@@ -228,52 +228,68 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="LEADS"
+          title="Total de Leads"
           value={metrics.totalLeads}
           icon={Users}
-          bgColor="bg-blue-50"
-          textColor="text-blue-600"
-          percentage="+12%"
-          percentageColor="text-green-600"
+          bgColor="bg-gradient-to-br from-blue-500 to-blue-600"
         />
         <MetricCard
-          title="REUNIÕES"
+          title="Qualificados"
+          value={metrics.qualifiedCount}
+          icon={CheckCircle}
+          bgColor="bg-gradient-to-br from-green-500 to-green-600"
+        />
+        <MetricCard
+          title="Taxa de Conversão"
+          value={`${metrics.conversionRate.toFixed(0)}%`}
+          icon={TrendingUp}
+          bgColor="bg-gradient-to-br from-amber-400 to-amber-500"
+        />
+        <MetricCard
+          title="Leads Hoje"
+          value={metrics.todayLeads}
+          icon={CalendarCheck}
+          bgColor="bg-gradient-to-br from-violet-500 to-violet-600"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <MetricCard
+          title="Reuniões Agendadas"
           value={metrics.meetingsScheduled}
           icon={Calendar}
-          bgColor="bg-purple-50"
-          textColor="text-purple-600"
-          percentage="-5%"
-          percentageColor="text-red-600"
+          bgColor="bg-gradient-to-br from-violet-400 to-violet-500"
+          compact
         />
         <MetricCard
-          title="PROPOSTAS"
+          title="Comparecidas"
+          value={metrics.meetingsHeld}
+          icon={Users}
+          bgColor="bg-gradient-to-br from-cyan-500 to-cyan-600"
+          compact
+        />
+        <MetricCard
+          title="Vendas"
           value={metrics.dealsWon}
           icon={FileText}
-          bgColor="bg-orange-50"
-          textColor="text-orange-600"
-          percentage="+8%"
-          percentageColor="text-green-600"
+          bgColor="bg-gradient-to-br from-emerald-500 to-emerald-600"
+          compact
         />
         <MetricCard
-          title="VENDAS"
-          value={metrics.meetingsHeld}
-          icon={CheckCircle}
-          bgColor="bg-teal-50"
-          textColor="text-teal-600"
-          percentage="+15%"
-          percentageColor="text-green-600"
+          title="Ticket Médio"
+          value={`R$ ${(metrics.averageTicket / 1000).toFixed(1)}k`}
+          icon={DollarSign}
+          bgColor="bg-gradient-to-br from-amber-500 to-amber-600"
+          compact
         />
         <MetricCard
-          title="RECEITA TOTAL"
+          title="Faturamento Total"
           value={`R$ ${(metrics.totalRevenue / 1000).toFixed(0)}k`}
           icon={DollarSign}
-          bgColor="bg-yellow-50"
-          textColor="text-gray-900"
-          subtitle={`TICKET MÉDIO\nR$ ${(metrics.averageTicket / 1000).toFixed(1)}k`}
-          percentage="+20%"
-          percentageColor="text-green-600"
+          bgColor="bg-gradient-to-br from-green-500 to-green-600"
+          compact
         />
       </div>
 
@@ -453,37 +469,20 @@ interface MetricCardProps {
   value: string | number;
   icon: React.ElementType;
   bgColor: string;
-  textColor: string;
-  percentage?: string;
-  percentageColor?: string;
-  subtitle?: string;
+  compact?: boolean;
 }
 
-function MetricCard({ title, value, icon: Icon, bgColor, textColor, percentage, percentageColor, subtitle }: MetricCardProps) {
+function MetricCard({ title, value, icon: Icon, bgColor, compact }: MetricCardProps) {
   return (
-    <div className={`${bgColor} rounded-lg p-6 hover:shadow-md transition-shadow`}>
-      <div className="flex items-start justify-between mb-4">
-        <div className={`${bgColor.replace('50', '100')} p-3 rounded-lg`}>
-          <Icon className={`w-6 h-6 ${textColor}`} />
+    <div className={`${bgColor} rounded-xl shadow-md hover:shadow-lg transition-all p-${compact ? '4' : '6'} text-white`}>
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className={`text-${compact ? 'xs' : 'sm'} font-medium opacity-90 mb-1`}>{title}</div>
+          <div className={`text-${compact ? '2xl' : '3xl'} font-bold`}>{value}</div>
         </div>
-        {percentage && (
-          <span className={`text-sm font-semibold ${percentageColor}`}>
-            {percentage}
-          </span>
-        )}
-      </div>
-      <div className="space-y-1">
-        <div className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-          {title}
+        <div className="bg-white/20 p-2 rounded-lg">
+          <Icon className={`w-${compact ? '5' : '6'} h-${compact ? '5' : '6'}`} />
         </div>
-        <div className={`text-3xl font-bold ${textColor === 'text-gray-900' ? 'text-gray-900' : 'text-gray-900'}`}>
-          {value}
-        </div>
-        {subtitle && (
-          <div className="text-xs text-gray-500 whitespace-pre-line mt-2">
-            {subtitle}
-          </div>
-        )}
       </div>
     </div>
   );

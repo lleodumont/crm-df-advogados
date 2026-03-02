@@ -9,15 +9,15 @@ type LeadStatus = Database['public']['Tables']['leads']['Row']['status'];
 type LeadClassification = Database['public']['Tables']['leads']['Row']['classification'];
 type LeadAnswer = Database['public']['Tables']['lead_answers']['Row'];
 
-const statusColumns: { status: LeadStatus; label: string; color: string; dotColor: string }[] = [
-  { status: 'novo', label: 'NOVO', color: 'bg-gray-50', dotColor: 'bg-gray-400' },
-  { status: 'triagem', label: 'EM ATENDIMENTO', color: 'bg-orange-50', dotColor: 'bg-orange-400' },
-  { status: 'qualificado', label: 'AGENDADO', color: 'bg-yellow-50', dotColor: 'bg-yellow-500' },
-  { status: 'agendado', label: 'AGENDADO', color: 'bg-cyan-50', dotColor: 'bg-cyan-400' },
-  { status: 'compareceu', label: 'COMPARECEU', color: 'bg-blue-50', dotColor: 'bg-blue-500' },
-  { status: 'proposta_enviada', label: 'PROPOSTA', color: 'bg-purple-50', dotColor: 'bg-purple-500' },
-  { status: 'ganho', label: 'GANHO', color: 'bg-green-50', dotColor: 'bg-green-500' },
-  { status: 'perdido', label: 'PERDIDO', color: 'bg-red-50', dotColor: 'bg-red-400' },
+const statusColumns: { status: LeadStatus; label: string; color: string }[] = [
+  { status: 'novo', label: 'Novo', color: 'bg-gray-100' },
+  { status: 'triagem', label: 'Triagem', color: 'bg-orange-100' },
+  { status: 'qualificado', label: 'Qualificado', color: 'bg-yellow-100' },
+  { status: 'agendado', label: 'Agendado', color: 'bg-cyan-100' },
+  { status: 'compareceu', label: 'Compareceu', color: 'bg-blue-100' },
+  { status: 'proposta_enviada', label: 'Proposta Enviada', color: 'bg-purple-100' },
+  { status: 'ganho', label: 'Ganho', color: 'bg-green-100' },
+  { status: 'perdido', label: 'Perdido', color: 'bg-red-100' },
 ];
 
 export default function Pipeline() {
@@ -588,77 +588,86 @@ export default function Pipeline() {
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, column.status)}
             >
-              <div className="flex items-center gap-2 mb-3">
-                <div className={`w-2 h-2 rounded-full ${column.dotColor}`} />
-                <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  {column.label}
-                </h2>
-                <span className="text-xs font-semibold text-gray-400 ml-auto">{columnLeads.length}</span>
+              <div className={`${column.color} rounded-lg p-4 mb-3`}>
+                <h2 className="font-semibold text-gray-900">{column.label}</h2>
+                <p className="text-sm text-gray-600">{columnLeads.length} leads</p>
               </div>
 
-              <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
+              <div className="space-y-3 max-h-[calc(100vh-280px)] overflow-y-auto pr-2">
                 {columnLeads.map((lead) => (
                   <div
                     key={lead.id}
                     draggable
                     onDragStart={() => handleDragStart(lead.id)}
                     onClick={() => openLeadDetail(lead)}
-                    className="bg-white rounded-lg border border-gray-200 p-3 cursor-pointer hover:shadow-sm transition-all"
+                    className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 cursor-pointer hover:shadow-lg hover:border-gray-300 transition-all"
                   >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1 min-w-0">
-                        {lead.classification === 'estrategico' && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 mb-1">
-                            ESTRATÉGICO
-                          </span>
-                        )}
-                        {lead.classification === 'qualificado' && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700 mb-1">
-                            QUALIFICADO
-                          </span>
-                        )}
-                        <h3 className="font-semibold text-gray-900 text-sm truncate">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 text-sm mb-1">
                           {lead.full_name}
                         </h3>
-                      </div>
-                      <span className="text-xs text-gray-400 ml-2 flex-shrink-0">#{lead.id.slice(0, 6)}</span>
-                    </div>
-
-                    {lead.source && (
-                      <div className="mb-2">
-                        <span className="text-xs text-gray-500">
-                          {lead.source === 'facebook' ? 'SaaS' : lead.source} • Tier 1
-                        </span>
-                      </div>
-                    )}
-
-                    {(lead.utm_source || lead.utm_campaign) && (
-                      <div className="mb-2">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Calendar className="w-3 h-3" />
-                          <span className="italic">
-                            {lead.utm_campaign || lead.utm_source || 'Sem agendamento'}
+                        {lead.campaign && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            {lead.campaign.length > 15 ? lead.campaign.substring(0, 15) + '...' : lead.campaign}
                           </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 ml-2">
+                        <div className={`w-2 h-2 rounded-full ${getClassificationBadge(lead.classification)}`} />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 text-xs text-gray-600 mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <Phone className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{lead.phone}</span>
+                      </div>
+                      {lead.email && (
+                        <div className="flex items-center gap-1.5">
+                          <Mail className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{lead.email}</span>
                         </div>
+                      )}
+                    </div>
+
+                    {(lead.utm_source || lead.utm_medium) && (
+                      <div className="mb-3 flex flex-wrap gap-1">
+                        {lead.utm_source && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
+                            {lead.utm_source}
+                          </span>
+                        )}
+                        {lead.utm_medium && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-50 text-purple-700 border border-purple-200">
+                            {lead.utm_medium}
+                          </span>
+                        )}
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                      <div className="flex items-center gap-1.5">
-                        <DollarSign className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="text-sm font-semibold text-gray-900">
-                          R$ {((lead.deal_value || 15000) / 1000).toFixed(1).replace('.', ',')}k
-                        </span>
+                    <div className="flex items-center justify-between pt-2.5 border-t border-gray-100">
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <Calendar className="w-3 h-3" />
+                        <span>{formatDate(lead.created_at)}</span>
                       </div>
-                      <div className="w-6 h-6 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-medium text-gray-600">
-                        {lead.full_name.charAt(0).toUpperCase()}
+                      <div className="flex items-center gap-1 text-xs text-gray-500">
+                        <Clock className="w-3 h-3" />
+                        <span>{formatRelativeTime(lead.updated_at)}</span>
                       </div>
                     </div>
+
+                    {lead.classification === 'estrategico' && (
+                      <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-medium">
+                        <TrendingUp className="w-3 h-3" />
+                        Prioritário
+                      </div>
+                    )}
                   </div>
                 ))}
 
                 {columnLeads.length === 0 && (
-                  <div className="text-center py-8 text-gray-400 text-xs">
+                  <div className="text-center py-8 text-gray-400 text-sm">
                     Arraste leads aqui
                   </div>
                 )}
