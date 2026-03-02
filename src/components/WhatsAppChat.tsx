@@ -93,21 +93,22 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
 
   const loadMessages = async () => {
     try {
-      const cleanPhone = leadPhone.replace(/\D/g, '');
-      const phoneVariations = [
-        cleanPhone,
-        cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`,
-        cleanPhone.startsWith('55') ? cleanPhone.substring(2) : cleanPhone,
-      ];
-
       const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('*')
-        .or(`phone_number.in.(${phoneVariations.join(',')}),lead_id.eq.${leadId}`)
+        .eq('lead_id', leadId)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      setMessages(data || []);
+
+      const uniqueMessages = data?.reduce((acc, msg) => {
+        if (!acc.find(m => m.id === msg.id)) {
+          acc.push(msg);
+        }
+        return acc;
+      }, [] as Message[]) || [];
+
+      setMessages(uniqueMessages);
     } catch (error) {
       console.error('Error loading messages:', error);
     } finally {
