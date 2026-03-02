@@ -20,7 +20,18 @@ export default function WhatsAppConversations() {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
   useEffect(() => {
-    loadConversations();
+    const initAndOpenConversation = async () => {
+      await loadConversations();
+
+      const params = new URLSearchParams(window.location.search);
+      const leadIdFromUrl = params.get('lead');
+
+      if (leadIdFromUrl) {
+        openConversationByLeadId(leadIdFromUrl);
+      }
+    };
+
+    initAndOpenConversation();
 
     const channel = supabase
       .channel('conversations_updates')
@@ -102,6 +113,39 @@ export default function WhatsAppConversations() {
       setConversations(Array.from(conversationsMap.values()));
     } catch (error) {
       console.error('Error in fallback:', error);
+    }
+  };
+
+  const openConversationByLeadId = async (leadId: string) => {
+    try {
+      const { data: lead, error } = await supabase
+        .from('leads')
+        .select('id, full_name, phone')
+        .eq('id', leadId)
+        .single();
+
+      if (error || !lead) {
+        console.error('Lead not found:', error);
+        return;
+      }
+
+      const existingConv = conversations.find(c => c.lead_id === leadId);
+
+      if (existingConv) {
+        setSelectedConversation(existingConv);
+      } else {
+        setSelectedConversation({
+          lead_id: lead.id,
+          lead_name: lead.full_name,
+          lead_phone: lead.phone,
+          last_message: '',
+          last_message_time: new Date().toISOString(),
+          unread_count: 0,
+          last_message_direction: 'outbound',
+        });
+      }
+    } catch (error) {
+      console.error('Error opening conversation:', error);
     }
   };
 

@@ -28,7 +28,7 @@ function Router() {
   if (path === '/instructions') return <Instructions />;
   if (path === '/report') return <WeeklyReport />;
   if (path === '/whatsapp-settings') return <WhatsAppSettings />;
-  if (path === '/whatsapp-conversations') return <WhatsAppConversations />;
+  if (path === '/whatsapp-conversations' || path.startsWith('/whatsapp-conversations?')) return <WhatsAppConversations />;
   if (path === '/users') return <Users />;
 
   return <Dashboard />;

@@ -117,7 +117,7 @@ export default function Pipeline() {
   };
 
   const openWhatsAppChat = (lead: Lead) => {
-    window.location.href = `/whatsapp?lead=${lead.id}`;
+    window.location.href = `/whatsapp-conversations?lead=${lead.id}`;
   };
 
   const getClassificationBadge = (classification: LeadClassification) => {
