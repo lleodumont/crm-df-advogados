@@ -6,8 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const UAZAPI_BASE_URL = "https://api.uazapi.com";
-
 interface SendMessageRequest {
   instanceId: string;
   phoneNumber: string;
@@ -26,11 +24,6 @@ Deno.serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const uazapiToken = Deno.env.get("UAZAPI_TOKEN");
-
-    if (!uazapiToken) {
-      throw new Error("UAZAPI_TOKEN not configured");
-    }
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -55,22 +48,28 @@ Deno.serve(async (req: Request) => {
 
     if (userError) throw userError;
 
-    const { data: instance } = await supabase
+    const { data: instance, error: instanceError } = await supabase
       .from("whatsapp_instances")
-      .select("id")
+      .select("id, token, api_url")
       .eq("instance_id", instanceId)
       .single();
 
-    if (!instance) {
+    if (instanceError || !instance) {
       throw new Error("WhatsApp instance not found");
     }
 
+    if (!instance.token) {
+      throw new Error("Instance token not configured. Please update the instance with API credentials.");
+    }
+
+    const apiUrl = instance.api_url || "https://api.uazapi.com";
+
     const response = await fetch(
-      `${UAZAPI_BASE_URL}/message/send-text`,
+      `${apiUrl}/message/send-text`,
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${uazapiToken}`,
+          "Authorization": `Bearer ${instance.token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -82,7 +81,13 @@ Deno.serve(async (req: Request) => {
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
+      const errorText = await response.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        throw new Error(`UazAPI error: ${response.statusText} - ${errorText}`);
+      }
       throw new Error(`UazAPI error: ${errorData.message || response.statusText}`);
     }
 
