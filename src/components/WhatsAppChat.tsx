@@ -147,8 +147,14 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       console.log('Response status:', response.status);
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to send message');
+        const errorText = await response.text();
+        console.error('Error response:', errorText);
+        try {
+          const error = JSON.parse(errorText);
+          throw new Error(error.error || 'Failed to send message');
+        } catch (e) {
+          throw new Error(`Failed to send message: ${errorText}`);
+        }
       }
 
       setNewMessage('');
