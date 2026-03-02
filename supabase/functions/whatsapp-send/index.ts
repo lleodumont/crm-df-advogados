@@ -62,23 +62,20 @@ Deno.serve(async (req: Request) => {
       throw new Error("Instance token not configured. Please update the instance with API credentials.");
     }
 
-    const apiUrl = instance.api_url || "https://api.uazapi.com";
+    const n8nWebhookUrl = "https://webhooks.globalsaleshub.tech/webhook/217e97de-e983-4394-9570-6723b6152917";
 
-    const response = await fetch(
-      `${apiUrl}/message/send-text`,
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${instance.token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          instanceId,
-          phone: formattedPhone,
-          message,
-        }),
-      }
-    );
+    const response = await fetch(n8nWebhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        instanceId,
+        phone: formattedPhone,
+        message,
+        token: instance.token,
+      }),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -86,9 +83,9 @@ Deno.serve(async (req: Request) => {
       try {
         errorData = JSON.parse(errorText);
       } catch {
-        throw new Error(`UazAPI error: ${response.statusText} - ${errorText}`);
+        throw new Error(`n8n webhook error: ${response.statusText} - ${errorText}`);
       }
-      throw new Error(`UazAPI error: ${errorData.message || response.statusText}`);
+      throw new Error(`n8n webhook error: ${errorData.message || response.statusText}`);
     }
 
     const responseData = await response.json();
