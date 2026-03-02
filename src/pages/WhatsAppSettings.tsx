@@ -212,6 +212,7 @@ export default function WhatsAppSettings() {
           status: 'connected',
           created_by: user.id,
           token: existingApiKey,
+          api_url: existingApiUrl,
         })
         .select()
         .single();
