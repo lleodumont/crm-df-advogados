@@ -25,12 +25,10 @@ Deno.serve(async (req: Request) => {
     console.log("Starting whatsapp-send function");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     const authHeader = req.headers.get("Authorization");
-    const apikeyHeader = req.headers.get("apikey");
     console.log("Auth header present:", !!authHeader);
-    console.log("Apikey header present:", !!apikeyHeader);
-    console.log("All headers:", Array.from(req.headers.entries()).map(([k, v]) => `${k}: ${k.toLowerCase().includes('auth') || k.toLowerCase().includes('key') ? v.substring(0, 20) + '...' : v}`));
 
     if (!authHeader) {
       return new Response(
@@ -54,30 +52,33 @@ Deno.serve(async (req: Request) => {
     console.log("Formatted phone:", formattedPhone);
 
     const { createClient } = await import("npm:@supabase/supabase-js@2.57.4");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get user ID from JWT (already validated by Supabase since verifyJWT=true)
+    // Create client with user's JWT to validate session
     const token = authHeader.replace("Bearer ", "");
-    const parts = token.split('.');
-    if (parts.length !== 3) {
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    });
+
+    // Validate the user session
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error("Auth validation failed:", authError);
       return new Response(
-        JSON.stringify({ error: "Invalid token format" }),
+        JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    let userId;
-    try {
-      const payload = JSON.parse(atob(parts[1]));
-      userId = payload.sub;
-      console.log("User ID from JWT:", userId);
-    } catch (e) {
-      console.error("Failed to decode JWT:", e);
-      return new Response(
-        JSON.stringify({ error: "Invalid token" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const userId = user.id;
+    console.log("Authenticated user ID:", userId);
+
+    // Use service role client for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: instance, error: instanceError } = await supabase
       .from("whatsapp_instances")
