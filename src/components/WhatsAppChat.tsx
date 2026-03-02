@@ -120,22 +120,31 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-send`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            instanceId: selectedInstance,
-            phoneNumber: leadPhone,
-            message: newMessage,
-            leadId: leadId,
-          }),
-        }
-      );
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-send`;
+      console.log('Sending message to:', apiUrl);
+      console.log('Payload:', {
+        instanceId: selectedInstance,
+        phoneNumber: leadPhone,
+        message: newMessage,
+        leadId: leadId,
+      });
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          instanceId: selectedInstance,
+          phoneNumber: leadPhone,
+          message: newMessage,
+          leadId: leadId,
+        }),
+      });
+
+      console.log('Response status:', response.status);
 
       if (!response.ok) {
         const error = await response.json();
