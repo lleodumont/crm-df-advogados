@@ -78,7 +78,7 @@ export default function Pipeline() {
     try {
       const { error } = await supabase
         .from('leads')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .update({ status: newStatus, })
         .eq('id', leadId);
 
       if (error) throw error;
