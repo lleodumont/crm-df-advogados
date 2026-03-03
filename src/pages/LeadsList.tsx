@@ -79,7 +79,7 @@ export default function LeadsList() {
     try {
       const { error } = await supabase
         .from('leads')
-        .update({ status, updated_at: new Date().toISOString() })
+        .update({ status })
         .eq('id', leadId);
 
       if (error) throw error;
@@ -102,7 +102,7 @@ export default function LeadsList() {
     try {
       const { error } = await supabase
         .from('leads')
-        .update({ owner_user_id: profile?.id, updated_at: new Date().toISOString() })
+        .update({ owner_user_id: profile?.id })
         .eq('id', leadId);
 
       if (error) throw error;
