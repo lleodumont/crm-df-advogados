@@ -44,22 +44,22 @@ export default function Dashboard() {
 
       const totalLeads = leads?.length || 0;
       const qualifiedCount = leads?.filter(l =>
-        l.classification === 'hot' || l.classification === 'warm'
+        l.classification === 'estrategico' || l.classification === 'qualificado'
       ).length || 0;
-      const dealsWon = leads?.filter(l => l.status === 'won').length || 0;
+      const dealsWon = leads?.filter(l => l.status === 'ganho').length || 0;
       const conversionRate = totalLeads > 0 ? (dealsWon / totalLeads) * 100 : 0;
 
       const today = new Date().toISOString().split('T')[0];
       const todayLeads = leads?.filter(l => l.created_at.startsWith(today)).length || 0;
 
-      const meetingsScheduled = meetings?.filter(m => m.status === 'scheduled').length || 0;
-      const meetingsHeld = leads?.filter(l => l.status === 'meeting_held').length || 0;
+      const meetingsScheduled = leads?.filter(l => l.status === 'agendado').length || 0;
+      const meetingsHeld = leads?.filter(l => l.status === 'compareceu').length || 0;
       const proposalsPresented = leads?.filter(l =>
-        l.status === 'proposal_sent' || l.status === 'won' || l.status === 'lost'
+        l.status === 'proposta_enviada' || l.status === 'ganho' || l.status === 'perdido'
       ).length || 0;
 
       const totalRevenue = leads
-        ?.filter(l => l.status === 'won')
+        ?.filter(l => l.status === 'ganho')
         .reduce((sum, l) => sum + (l.deal_value || 0), 0) || 0;
       const averageTicket = dealsWon > 0 ? totalRevenue / dealsWon : 0;
 
@@ -75,11 +75,15 @@ export default function Dashboard() {
       }));
 
       const statusMap = new Map<string, { count: number; color: string }>();
-      statusMap.set('new', { count: 0, color: 'bg-blue-500' });
-      statusMap.set('qualified', { count: 0, color: 'bg-green-500' });
-      statusMap.set('meeting_scheduled', { count: 0, color: 'bg-purple-500' });
-      statusMap.set('meeting_held', { count: 0, color: 'bg-cyan-500' });
-      statusMap.set('won', { count: 0, color: 'bg-emerald-500' });
+      statusMap.set('novo', { count: 0, color: 'bg-blue-500' });
+      statusMap.set('triagem', { count: 0, color: 'bg-orange-500' });
+      statusMap.set('qualificado', { count: 0, color: 'bg-green-500' });
+      statusMap.set('agendado', { count: 0, color: 'bg-purple-500' });
+      statusMap.set('compareceu', { count: 0, color: 'bg-cyan-500' });
+      statusMap.set('proposta_enviada', { count: 0, color: 'bg-pink-500' });
+      statusMap.set('ganho', { count: 0, color: 'bg-emerald-500' });
+      statusMap.set('perdido', { count: 0, color: 'bg-red-500' });
+      statusMap.set('maturacao', { count: 0, color: 'bg-violet-500' });
 
       leads?.forEach(l => {
         const current = statusMap.get(l.status);
@@ -88,11 +92,13 @@ export default function Dashboard() {
         }
       });
 
-      const leadsByStatus = Array.from(statusMap.entries()).map(([status, data]) => ({
-        status,
-        count: data.count,
-        percentage: totalLeads > 0 ? (data.count / totalLeads) * 100 : 0,
-      }));
+      const leadsByStatus = Array.from(statusMap.entries())
+        .map(([status, data]) => ({
+          status,
+          count: data.count,
+          percentage: totalLeads > 0 ? (data.count / totalLeads) * 100 : 0,
+        }))
+        .filter(item => item.count > 0);
 
       const utmSourceMap = new Map<string, number>();
       leads?.forEach(l => {
@@ -294,7 +300,7 @@ export default function Dashboard() {
                   <div className="text-3xl font-bold mb-2 text-gray-900">{item.count}</div>
                   <div className="text-sm font-medium text-gray-600 mb-3">{item.stage}</div>
                   <div className="text-xs bg-gray-100 text-gray-700 rounded-full px-3 py-1 inline-block font-medium">
-                    {item.percentage.toFixed(0)}%
+                    {item.percentage.toFixed(1)}%
                   </div>
                 </div>
               </div>
@@ -310,11 +316,16 @@ export default function Dashboard() {
           <div className="space-y-4">
             {metrics.leadsByStatus.map((item, i) => {
               const statusLabels: Record<string, string> = {
-                new: 'Novo lead',
-                qualified: 'Qualificado',
-                meeting_scheduled: 'Reunião Agendada',
-                meeting_held: 'Compareceu',
-                won: 'Negócio Fechado',
+                novo: 'Novo Lead',
+                triagem: 'Triagem',
+                qualificado: 'Qualificado',
+                agendado: 'Reunião Agendada',
+                compareceu: 'Compareceu',
+                proposta_enviada: 'Proposta Enviada',
+                ganho: 'Ganho',
+                perdido: 'Perdido',
+                maturacao: 'Maturação',
+                negociacao: 'Negociação',
               };
 
               return (
@@ -322,7 +333,7 @@ export default function Dashboard() {
                   <div className="flex justify-between text-sm mb-2">
                     <span className="font-medium text-gray-800">{statusLabels[item.status] || item.status}</span>
                     <span className="text-gray-600">
-                      {item.count} ({item.percentage.toFixed(0)}%)
+                      {item.count} ({item.percentage.toFixed(1)}%)
                     </span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
