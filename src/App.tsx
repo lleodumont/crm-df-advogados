@@ -11,6 +11,8 @@ import Agenda from './pages/Agenda';
 import Instructions from './pages/Instructions';
 import WhatsAppSettings from './pages/WhatsAppSettings';
 import WhatsAppConversations from './pages/WhatsAppConversations';
+import Tags from './pages/Tags';
+import Stages from './pages/Stages';
 import Layout from './components/Layout';
 
 function Router() {
@@ -25,6 +27,8 @@ function Router() {
   if (path === '/leads/import') return <ImportLeads />;
   if (path === '/pipeline') return <Pipeline />;
   if (path === '/agenda') return <Agenda />;
+  if (path === '/tags') return <Tags />;
+  if (path === '/stages') return <Stages />;
   if (path === '/instructions') return <Instructions />;
   if (path === '/report') return <WeeklyReport />;
   if (path === '/whatsapp-settings') return <WhatsAppSettings />;

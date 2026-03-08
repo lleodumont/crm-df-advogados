@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, ArrowLeft, BarChart3, CheckCircle } from 'lucide-react';
+import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, ArrowLeft, BarChart3, CheckCircle, Tag as TagIcon, Plus, X } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 import WhatsAppChat from '../components/WhatsAppChat';
@@ -11,6 +11,12 @@ type Activity = Database['public']['Tables']['activities']['Row'];
 type Meeting = Database['public']['Tables']['meetings']['Row'];
 type Proposal = Database['public']['Tables']['proposals']['Row'];
 type ScheduledActivity = Database['public']['Tables']['scheduled_activities']['Row'];
+
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
 
 export default function LeadDetail() {
   const id = window.location.pathname.split('/')[2];
@@ -23,6 +29,9 @@ export default function LeadDetail() {
   const [scheduledActivities, setScheduledActivities] = useState<ScheduledActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'timeline' | 'validation' | 'meetings' | 'proposals' | 'scheduled' | 'whatsapp'>('timeline');
+  const [leadTags, setLeadTags] = useState<Tag[]>([]);
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
+  const [showTagSelector, setShowTagSelector] = useState(false);
 
   const [validationForm, setValidationForm] = useState({
     decisao_real: '',
@@ -58,13 +67,15 @@ export default function LeadDetail() {
   const loadLeadData = async () => {
     setLoading(true);
     try {
-      const [leadRes, answersRes, activitiesRes, meetingsRes, proposalsRes, scheduledRes] = await Promise.all([
+      const [leadRes, answersRes, activitiesRes, meetingsRes, proposalsRes, scheduledRes, tagsRes, allTagsRes] = await Promise.all([
         supabase.from('leads').select('*').eq('id', id).maybeSingle(),
         supabase.from('lead_answers').select('*').eq('lead_id', id).order('created_at', { ascending: false }),
         supabase.from('activities').select('*').eq('lead_id', id).order('created_at', { ascending: false }),
         supabase.from('meetings').select('*').eq('lead_id', id).order('scheduled_at', { ascending: false }),
         supabase.from('proposals').select('*').eq('lead_id', id).order('created_at', { ascending: false }),
         supabase.from('scheduled_activities').select('*').eq('lead_id', id).order('scheduled_at', { ascending: true }),
+        supabase.from('lead_tags').select('tags(id, name, color)').eq('lead_id', id),
+        supabase.from('tags').select('*').order('name'),
       ]);
 
       setLead(leadRes.data);
@@ -73,6 +84,8 @@ export default function LeadDetail() {
       setMeetings(meetingsRes.data || []);
       setProposals(proposalsRes.data || []);
       setScheduledActivities(scheduledRes.data || []);
+      setLeadTags(tagsRes.data?.map(lt => lt.tags as unknown as Tag).filter(Boolean) || []);
+      setAvailableTags(allTagsRes.data || []);
     } catch (error) {
       console.error('Error loading lead data:', error);
     } finally {
@@ -261,6 +274,44 @@ export default function LeadDetail() {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
 
+  const addTag = async (tagId: string) => {
+    if (!id) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('lead_tags')
+        .insert({
+          lead_id: id,
+          tag_id: tagId,
+          created_by: user.id
+        });
+
+      if (error) throw error;
+      setShowTagSelector(false);
+      loadLeadData();
+    } catch (error) {
+      console.error('Error adding tag:', error);
+    }
+  };
+
+  const removeTag = async (tagId: string) => {
+    if (!id) return;
+    try {
+      const { error } = await supabase
+        .from('lead_tags')
+        .delete()
+        .eq('lead_id', id)
+        .eq('tag_id', tagId);
+
+      if (error) throw error;
+      loadLeadData();
+    } catch (error) {
+      console.error('Error removing tag:', error);
+    }
+  };
+
   const getClassificationColor = (classification: string) => {
     switch (classification) {
       case 'estrategico':
@@ -399,6 +450,65 @@ export default function LeadDetail() {
             <div className="flex items-center gap-3">
               <DollarSign className="w-5 h-5 text-gray-400" />
               <span className="text-gray-700">Renda: {getFamilyIncomeLabel(lead.family_income_range)}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-gray-600 flex items-center gap-2">
+              <TagIcon className="w-4 h-4" />
+              Etiquetas
+            </h3>
+            <button
+              onClick={() => setShowTagSelector(!showTagSelector)}
+              className="flex items-center gap-1 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Adicionar
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {leadTags.length === 0 ? (
+              <p className="text-sm text-gray-500">Nenhuma etiqueta adicionada</p>
+            ) : (
+              leadTags.map((tag) => (
+                <div
+                  key={tag.id}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium"
+                  style={{ backgroundColor: tag.color, color: 'white' }}
+                >
+                  {tag.name}
+                  <button
+                    onClick={() => removeTag(tag.id)}
+                    className="hover:bg-white/20 rounded-full p-0.5 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+          {showTagSelector && (
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs text-gray-600 mb-2">Selecione uma etiqueta para adicionar:</p>
+              <div className="flex flex-wrap gap-2">
+                {availableTags
+                  .filter(tag => !leadTags.some(lt => lt.id === tag.id))
+                  .map((tag) => (
+                    <button
+                      key={tag.id}
+                      onClick={() => addTag(tag.id)}
+                      className="px-3 py-1 rounded-full text-sm font-medium hover:ring-2 ring-offset-1 transition-all"
+                      style={{ backgroundColor: tag.color, color: 'white', ringColor: tag.color }}
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                {availableTags.filter(tag => !leadTags.some(lt => lt.id === tag.id)).length === 0 && (
+                  <p className="text-sm text-gray-500">Todas as etiquetas já foram adicionadas</p>
+                )}
+              </div>
             </div>
           )}
         </div>

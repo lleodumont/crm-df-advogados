@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Scale, LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle } from 'lucide-react';
+import { Scale, LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers } from 'lucide-react';
 import { useState } from 'react';
 
 interface LayoutProps {
@@ -17,6 +17,8 @@ export default function Layout({ children }: LayoutProps) {
     { href: '/whatsapp-conversations', icon: MessageCircle, label: 'Conversas' },
     { href: '/pipeline', icon: GitBranch, label: 'Pipeline' },
     { href: '/agenda', icon: Calendar, label: 'Agenda' },
+    { href: '/tags', icon: Tag, label: 'Etiquetas' },
+    { href: '/stages', icon: Layers, label: 'Etapas' },
     { href: '/instructions', icon: BookOpen, label: 'Instruções' },
     { href: '/report', icon: FileText, label: 'Relatório Semanal' },
     { href: '/leads/import', icon: Upload, label: 'Importar Leads' },

@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, Filter, Plus, Phone, Mail, TrendingUp, ChevronDown } from 'lucide-react';
+import { Search, Filter, Plus, Phone, Mail, TrendingUp, ChevronDown, Tag as TagIcon, X } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 
 type Lead = Database['public']['Tables']['leads']['Row'];
 type LeadStatus = Database['public']['Tables']['leads']['Row']['status'];
 type LeadClassification = Database['public']['Tables']['leads']['Row']['classification'];
+
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
+interface LeadWithTags extends Lead {
+  tags?: Tag[];
+}
 
 interface Filters {
   search: string;
@@ -16,13 +26,15 @@ interface Filters {
   scoreMin: number;
   scoreMax: number;
   familyIncomeRange: string;
+  tagIds: string[];
 }
 
 export default function LeadsList() {
   const { profile } = useAuth();
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<LeadWithTags[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
+  const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [filters, setFilters] = useState<Filters>({
     search: '',
     status: 'all',
@@ -31,11 +43,27 @@ export default function LeadsList() {
     scoreMin: 0,
     scoreMax: 100,
     familyIncomeRange: 'all',
+    tagIds: [],
   });
 
   useEffect(() => {
     loadLeads();
+    loadTags();
   }, [filters]);
+
+  const loadTags = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setAvailableTags(data || []);
+    } catch (error) {
+      console.error('Error loading tags:', error);
+    }
+  };
 
   const loadLeads = async () => {
     setLoading(true);
@@ -64,10 +92,48 @@ export default function LeadsList() {
 
       query = query.gte('score_total', filters.scoreMin).lte('score_total', filters.scoreMax);
 
-      const { data, error } = await query.order('score_total', { ascending: false }).order('created_at', { ascending: false });
+      const { data: leadsData, error } = await query.order('score_total', { ascending: false }).order('created_at', { ascending: false });
 
       if (error) throw error;
-      setLeads(data || []);
+
+      let filteredLeads = leadsData || [];
+
+      if (filters.tagIds.length > 0) {
+        const { data: leadTagsData, error: leadTagsError } = await supabase
+          .from('lead_tags')
+          .select('lead_id, tag_id, tags(id, name, color)')
+          .in('tag_id', filters.tagIds);
+
+        if (leadTagsError) throw leadTagsError;
+
+        const leadIdsWithSelectedTags = new Set(leadTagsData?.map(lt => lt.lead_id));
+        filteredLeads = filteredLeads.filter(lead => leadIdsWithSelectedTags.has(lead.id));
+      }
+
+      const leadIds = filteredLeads.map(lead => lead.id);
+      if (leadIds.length > 0) {
+        const { data: allLeadTags, error: allLeadTagsError } = await supabase
+          .from('lead_tags')
+          .select('lead_id, tags(id, name, color)')
+          .in('lead_id', leadIds);
+
+        if (!allLeadTagsError && allLeadTags) {
+          const tagsByLead = allLeadTags.reduce((acc, lt) => {
+            if (!acc[lt.lead_id]) acc[lt.lead_id] = [];
+            if (lt.tags) {
+              acc[lt.lead_id].push(lt.tags as unknown as Tag);
+            }
+            return acc;
+          }, {} as Record<string, Tag[]>);
+
+          filteredLeads = filteredLeads.map(lead => ({
+            ...lead,
+            tags: tagsByLead[lead.id] || []
+          }));
+        }
+      }
+
+      setLeads(filteredLeads);
     } catch (error) {
       console.error('Error loading leads:', error);
     } finally {
@@ -267,6 +333,47 @@ export default function LeadsList() {
               />
             </div>
 
+            <div className="md:col-span-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                <TagIcon className="w-4 h-4" />
+                Filtrar por Etiquetas
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={() => {
+                      const isSelected = filters.tagIds.includes(tag.id);
+                      setFilters({
+                        ...filters,
+                        tagIds: isSelected
+                          ? filters.tagIds.filter(id => id !== tag.id)
+                          : [...filters.tagIds, tag.id]
+                      });
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                      filters.tagIds.includes(tag.id)
+                        ? 'ring-2 ring-offset-2 shadow-md'
+                        : 'opacity-60 hover:opacity-100'
+                    }`}
+                    style={{
+                      backgroundColor: tag.color,
+                      color: 'white',
+                      ringColor: tag.color
+                    }}
+                  >
+                    {tag.name}
+                    {filters.tagIds.includes(tag.id) && (
+                      <X className="w-3 h-3 inline-block ml-1" />
+                    )}
+                  </button>
+                ))}
+                {availableTags.length === 0 && (
+                  <p className="text-gray-500 text-sm">Nenhuma etiqueta disponível. Crie etiquetas na página de Etiquetas.</p>
+                )}
+              </div>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Faixa de Renda</label>
               <select
@@ -330,6 +437,22 @@ export default function LeadsList() {
                       </a>
                       {lead.campaign && (
                         <div className="text-xs text-gray-500">{lead.campaign}</div>
+                      )}
+                      {lead.tags && lead.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {lead.tags.map((tag) => (
+                            <span
+                              key={tag.id}
+                              className="inline-block px-2 py-0.5 text-xs rounded-full"
+                              style={{
+                                backgroundColor: tag.color,
+                                color: 'white'
+                              }}
+                            >
+                              {tag.name}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
