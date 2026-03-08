@@ -9,15 +9,15 @@ type LeadStatus = Database['public']['Tables']['leads']['Row']['status'];
 type LeadClassification = Database['public']['Tables']['leads']['Row']['classification'];
 type LeadAnswer = Database['public']['Tables']['lead_answers']['Row'];
 
-const statusColumns: { status: LeadStatus; label: string; color: string; count?: number; value?: string }[] = [
-  { status: 'novo', label: 'POTENCIAL FUTURO', color: 'text-gray-700' },
-  { status: 'triagem', label: 'EM TRIAGEM', color: 'text-orange-700' },
-  { status: 'qualificado', label: 'QUALIFICADO', color: 'text-yellow-700' },
-  { status: 'agendado', label: 'AGENDADO', color: 'text-cyan-700' },
-  { status: 'compareceu', label: 'COMPARECEU', color: 'text-blue-700' },
-  { status: 'proposta_enviada', label: 'PROPOSTA ENVIADA', color: 'text-purple-700' },
-  { status: 'ganho', label: 'GANHO', color: 'text-green-700' },
-  { status: 'perdido', label: 'PERDIDO', color: 'text-red-700' },
+const statusColumns: { status: LeadStatus; label: string; count?: number; value?: string }[] = [
+  { status: 'novo', label: 'POTENCIAL FUTURO' },
+  { status: 'triagem', label: 'EM TRIAGEM' },
+  { status: 'qualificado', label: 'QUALIFICADO' },
+  { status: 'agendado', label: 'AGENDADO' },
+  { status: 'compareceu', label: 'COMPARECEU' },
+  { status: 'proposta_enviada', label: 'PROPOSTA ENVIADA' },
+  { status: 'ganho', label: 'GANHO' },
+  { status: 'perdido', label: 'PERDIDO' },
 ];
 
 export default function Pipeline() {
@@ -306,8 +306,8 @@ export default function Pipeline() {
   };
 
   return (
-    <div className="space-y-4 bg-gray-50 min-h-screen">
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+    <div className="space-y-4 bg-gray-100 min-h-screen">
+      <div className="bg-white border-b border-gray-300 px-6 py-4">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Negociações</h1>
@@ -646,24 +646,18 @@ export default function Pipeline() {
               <div className={`rounded-lg p-3 mb-3 transition-all ${
                 draggedLead && leads.find(l => l.id === draggedLead)?.status !== column.status
                   ? 'bg-blue-50 border-2 border-blue-300'
-                  : 'bg-gray-100'
+                  : 'bg-white border border-gray-300'
               }`}>
                 <div className="flex items-center justify-between mb-1">
-                  <h2 className={`font-bold text-xs uppercase tracking-wide ${column.color}`}>
+                  <h2 className="font-semibold text-xs uppercase tracking-wider text-gray-700">
                     {column.label}
                   </h2>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-gray-600">{columnLeads.length}</span>
-                    <button className="p-1 hover:bg-gray-200 rounded transition">
-                      <Plus className="w-4 h-4 text-blue-600" />
-                    </button>
-                    <button onClick={loadLeads} className="p-1 hover:bg-gray-200 rounded transition">
-                      <RefreshCw className="w-4 h-4 text-gray-600" />
-                    </button>
+                    <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{columnLeads.length}</span>
                   </div>
                 </div>
                 {totalValue > 0 && (
-                  <p className="text-sm font-bold text-gray-900">{formatCurrency(totalValue)}</p>
+                  <p className="text-sm font-semibold text-gray-900">{formatCurrency(totalValue)}</p>
                 )}
               </div>
 
@@ -688,68 +682,51 @@ export default function Pipeline() {
                           e.stopPropagation();
                           setShowActionMenu(showActionMenu === lead.id ? null : lead.id);
                         }}
-                        className={`bg-white rounded-lg shadow-sm border p-3 cursor-move hover:shadow-md transition-all group ${
-                          draggedLead === lead.id ? 'opacity-50 border-blue-500' : 'border-gray-200 hover:border-gray-300'
+                        className={`bg-white rounded-lg border p-3.5 cursor-move hover:shadow-sm transition-all group ${
+                          draggedLead === lead.id ? 'opacity-50 border-blue-400' : 'border-gray-300 hover:border-gray-400'
                         }`}
                       >
-                      <div className="flex items-start gap-3 mb-2.5">
-                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${
-                          lead.classification === 'estrategico' ? 'bg-green-500' :
-                          lead.classification === 'qualificado' ? 'bg-yellow-500' :
-                          'bg-gray-400'
+                      <div className="flex items-start gap-2.5 mb-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0 ${
+                          lead.classification === 'estrategico' ? 'bg-emerald-600' :
+                          lead.classification === 'qualificado' ? 'bg-amber-500' :
+                          'bg-slate-400'
                         }`}>
                           {initials}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-blue-600 text-sm mb-0.5 group-hover:underline truncate">
+                          <h3 className="font-medium text-gray-900 text-sm mb-0.5 truncate">
                             {lead.full_name}
                           </h3>
-                          <p className="text-xs text-gray-600 truncate">{lead.phone}</p>
+                          <p className="text-xs text-gray-500 truncate">{lead.phone}</p>
                         </div>
-                        {lead.deal_value && lead.deal_value > 0 && (
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-gray-900">
-                              {formatCurrency(lead.deal_value)}
-                            </p>
-                          </div>
-                        )}
                       </div>
 
-                      <div className="flex items-center gap-3 text-xs text-gray-500 mb-2">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3.5 h-3.5" />
-                          <span>{formatDate(lead.created_at)}</span>
+                      {lead.deal_value && lead.deal_value > 0 && (
+                        <div className="mb-3">
+                          <p className="text-base font-semibold text-gray-900">
+                            {formatCurrency(lead.deal_value)}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span>0</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span>0/0</span>
-                        </div>
-                      </div>
+                      )}
 
                       {lead.campaign && (
-                        <div className="mb-2">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700 border border-gray-200 truncate max-w-full">
+                        <div className="mb-3">
+                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 truncate max-w-full">
                             {lead.campaign}
                           </span>
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                      <div className="flex items-center gap-3 text-xs text-gray-500 pt-3 border-t border-gray-200">
                         <div className="flex items-center gap-1">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                            AA
-                          </span>
+                          <Calendar className="w-3.5 h-3.5" />
+                          <span>{formatDate(lead.created_at)}</span>
                         </div>
-                        {lead.classification === 'estrategico' && (
-                          <div className="flex items-center gap-1 text-xs font-medium text-green-600">
-                            <TrendingUp className="w-3 h-3" />
-                            Alta prioridade
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5" />
+                          <span>{formatRelativeTime(lead.created_at)}</span>
+                        </div>
                       </div>
                       </div>
 
