@@ -53,7 +53,9 @@ export default function Dashboard() {
       const todayLeads = leads?.filter(l => l.created_at.startsWith(today)).length || 0;
 
       const meetingsScheduled = leads?.filter(l => l.status === 'agendado').length || 0;
-      const meetingsHeld = leads?.filter(l => l.status === 'compareceu').length || 0;
+      const meetingsHeld = leads?.filter(l =>
+        l.status === 'proposta_enviada' || l.status === 'ganho'
+      ).length || 0;
       const proposalsPresented = leads?.filter(l =>
         l.status === 'proposta_enviada' || l.status === 'ganho' || l.status === 'perdido'
       ).length || 0;
