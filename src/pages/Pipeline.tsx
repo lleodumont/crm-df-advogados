@@ -9,20 +9,19 @@ type LeadStatus = Database['public']['Tables']['leads']['Row']['status'];
 type LeadClassification = Database['public']['Tables']['leads']['Row']['classification'];
 type LeadAnswer = Database['public']['Tables']['lead_answers']['Row'];
 
-const statusColumns: { status: LeadStatus; label: string; count?: number; value?: string }[] = [
-  { status: 'novo', label: 'POTENCIAL FUTURO' },
-  { status: 'triagem', label: 'EM TRIAGEM' },
-  { status: 'qualificado', label: 'QUALIFICADO' },
-  { status: 'agendado', label: 'AGENDADO' },
-  { status: 'compareceu', label: 'COMPARECEU' },
-  { status: 'proposta_enviada', label: 'PROPOSTA ENVIADA' },
-  { status: 'ganho', label: 'GANHO' },
-  { status: 'perdido', label: 'PERDIDO' },
-];
+interface PipelineStage {
+  id: string;
+  name: string;
+  stage_key: string;
+  color: string;
+  order_index: number;
+  is_default: boolean;
+}
 
 export default function Pipeline() {
   const { profile } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [draggedLead, setDraggedLead] = useState<string | null>(null);
   const [showNewLeadModal, setShowNewLeadModal] = useState(false);
@@ -39,6 +38,7 @@ export default function Pipeline() {
   });
 
   useEffect(() => {
+    loadStages();
     loadLeads();
   }, []);
 
@@ -54,6 +54,20 @@ export default function Pipeline() {
       document.removeEventListener('click', handleClickOutside);
     };
   }, [showActionMenu]);
+
+  const loadStages = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pipeline_stages')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (error) throw error;
+      setStages(data || []);
+    } catch (error) {
+      console.error('Error loading stages:', error);
+    }
+  };
 
   const loadLeads = async () => {
     setLoading(true);
@@ -628,29 +642,31 @@ export default function Pipeline() {
       )}
 
       <div className="flex gap-4 overflow-x-auto pb-6 px-6">
-        {statusColumns.map((column) => {
-          const columnLeads = leads.filter((lead) => lead.status === column.status);
-          const totalValue = calculateTotalValue(column.status);
+        {stages.map((stage) => {
+          const columnLeads = leads.filter((lead) => lead.status === stage.stage_key);
+          const totalValue = calculateTotalValue(stage.stage_key as LeadStatus);
 
           return (
             <div
-              key={column.status}
+              key={stage.id}
               className={`flex-shrink-0 w-[340px] transition-all ${
-                draggedLead && leads.find(l => l.id === draggedLead)?.status !== column.status
+                draggedLead && leads.find(l => l.id === draggedLead)?.status !== stage.stage_key
                   ? 'ring-2 ring-blue-400 ring-opacity-50 rounded-lg'
                   : ''
               }`}
               onDragOver={handleDragOver}
-              onDrop={(e) => handleDrop(e, column.status)}
+              onDrop={(e) => handleDrop(e, stage.stage_key as LeadStatus)}
             >
               <div className={`rounded-lg p-3 mb-3 transition-all ${
-                draggedLead && leads.find(l => l.id === draggedLead)?.status !== column.status
+                draggedLead && leads.find(l => l.id === draggedLead)?.status !== stage.stage_key
                   ? 'bg-blue-50 border-2 border-blue-300'
                   : 'bg-white border border-gray-300'
-              }`}>
+              }`}
+              style={{ borderLeftColor: stage.color, borderLeftWidth: '4px' }}
+              >
                 <div className="flex items-center justify-between mb-1">
                   <h2 className="font-semibold text-xs uppercase tracking-wider text-gray-700">
-                    {column.label}
+                    {stage.name}
                   </h2>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{columnLeads.length}</span>
