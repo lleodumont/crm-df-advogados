@@ -131,9 +131,14 @@ export default function Stages() {
     }
   };
 
-  const deleteStage = async (stageId: string) => {
+  const deleteStage = async (stageId: string, isDefault: boolean) => {
     if (!isAdmin) return;
-    if (!confirm('Tem certeza que deseja excluir esta etapa? Esta ação não pode ser desfeita.')) return;
+
+    const message = isDefault
+      ? 'ATENÇÃO: Esta é uma etapa padrão do sistema. Tem certeza que deseja excluí-la? Esta ação não pode ser desfeita e pode afetar leads existentes.'
+      : 'Tem certeza que deseja excluir esta etapa? Esta ação não pode ser desfeita.';
+
+    if (!confirm(message)) return;
 
     try {
       const { error } = await supabase
@@ -145,6 +150,7 @@ export default function Stages() {
       loadStages();
     } catch (error) {
       console.error('Error deleting stage:', error);
+      alert('Erro ao excluir etapa. Verifique se não há leads associados a ela.');
     }
   };
 
@@ -376,15 +382,13 @@ export default function Stages() {
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    {!stage.is_default && (
-                      <button
-                        onClick={() => deleteStage(stage.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                        title="Excluir"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
+                    <button
+                      onClick={() => deleteStage(stage.id, stage.is_default)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                      title={stage.is_default ? "Excluir etapa padrão (use com cuidado)" : "Excluir"}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </>
                 )}
               </div>
