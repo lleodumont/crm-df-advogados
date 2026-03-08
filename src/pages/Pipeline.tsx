@@ -28,6 +28,9 @@ export default function Pipeline() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [leadAnswers, setLeadAnswers] = useState<LeadAnswer[]>([]);
   const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
+  const [showDealValueModal, setShowDealValueModal] = useState(false);
+  const [pendingStatusUpdate, setPendingStatusUpdate] = useState<{ leadId: string; status: LeadStatus } | null>(null);
+  const [dealValue, setDealValue] = useState('');
   const [newLead, setNewLead] = useState({
     full_name: '',
     phone: '',
@@ -88,18 +91,24 @@ export default function Pipeline() {
     }
   };
 
-  const updateLeadStatus = async (leadId: string, newStatus: LeadStatus) => {
+  const updateLeadStatus = async (leadId: string, newStatus: LeadStatus, dealValueParam?: number) => {
     try {
       // Atualização otimista: atualiza o estado local imediatamente
       setLeads(prevLeads =>
         prevLeads.map(lead =>
-          lead.id === leadId ? { ...lead, status: newStatus } : lead
+          lead.id === leadId ? { ...lead, status: newStatus, deal_value: dealValueParam || lead.deal_value } : lead
         )
       );
 
+      const updateData: any = { status: newStatus };
+      if (dealValueParam !== undefined) {
+        updateData.deal_value = dealValueParam;
+        updateData.closed_at = new Date().toISOString();
+      }
+
       const { error } = await supabase
         .from('leads')
-        .update({ status: newStatus, })
+        .update(updateData)
         .eq('id', leadId);
 
       if (error) throw error;
@@ -109,7 +118,7 @@ export default function Pipeline() {
         type: 'status_change',
         channel: 'internal',
         user_id: profile?.id,
-        content: `Status alterado para: ${newStatus}`,
+        content: `Status alterado para: ${newStatus}${dealValueParam ? ` - Valor: R$ ${dealValueParam.toLocaleString('pt-BR')}` : ''}`,
       });
     } catch (error) {
       console.error('Error updating status:', error);
@@ -131,10 +140,36 @@ export default function Pipeline() {
     if (draggedLead) {
       const lead = leads.find(l => l.id === draggedLead);
       if (lead && lead.status !== status) {
-        updateLeadStatus(draggedLead, status);
+        if (status === 'ganho') {
+          setPendingStatusUpdate({ leadId: draggedLead, status });
+          setShowDealValueModal(true);
+        } else {
+          updateLeadStatus(draggedLead, status);
+        }
       }
       setDraggedLead(null);
     }
+  };
+
+  const confirmDealValue = () => {
+    if (pendingStatusUpdate) {
+      const value = parseFloat(dealValue.replace(/\D/g, ''));
+      if (value > 0) {
+        updateLeadStatus(pendingStatusUpdate.leadId, pendingStatusUpdate.status, value);
+        setShowDealValueModal(false);
+        setPendingStatusUpdate(null);
+        setDealValue('');
+      } else {
+        alert('Por favor, insira um valor válido');
+      }
+    }
+  };
+
+  const cancelDealValue = () => {
+    setShowDealValueModal(false);
+    setPendingStatusUpdate(null);
+    setDealValue('');
+    loadLeads();
   };
 
   const openWhatsAppChat = (lead: Lead) => {
@@ -802,6 +837,47 @@ export default function Pipeline() {
           );
         })}
       </div>
+
+      {showDealValueModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Valor do Negócio</h2>
+            <p className="text-gray-600 mb-4">Informe o valor do negócio fechado:</p>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Valor (R$)
+              </label>
+              <input
+                type="text"
+                value={dealValue}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '');
+                  const formatted = new Intl.NumberFormat('pt-BR').format(Number(value));
+                  setDealValue(formatted);
+                }}
+                placeholder="0"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={cancelDealValue}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDealValue}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .styled-scrollbar::-webkit-scrollbar {

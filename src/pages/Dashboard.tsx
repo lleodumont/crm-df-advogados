@@ -298,13 +298,13 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Ticket Médio"
-          value={`R$ ${(metrics.averageTicket / 1000).toFixed(1)}k`}
+          value={metrics.averageTicket > 0 ? `R$ ${(metrics.averageTicket / 1000).toFixed(1)}k` : '-'}
           icon={DollarSign}
           compact
         />
         <MetricCard
           title="Faturamento Total"
-          value={`R$ ${(metrics.totalRevenue / 1000).toFixed(0)}k`}
+          value={metrics.totalRevenue > 0 ? `R$ ${(metrics.totalRevenue / 1000).toFixed(0)}k` : '-'}
           icon={DollarSign}
           compact
         />
