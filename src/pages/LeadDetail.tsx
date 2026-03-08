@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, ArrowLeft, BarChart3, CheckCircle, Tag as TagIcon, Plus, X } from 'lucide-react';
+import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, ArrowLeft, BarChart3, CheckCircle, Tag as TagIcon, Plus, X, Edit, Save } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 import WhatsAppChat from '../components/WhatsAppChat';
@@ -32,6 +32,22 @@ export default function LeadDetail() {
   const [leadTags, setLeadTags] = useState<Tag[]>([]);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [showTagSelector, setShowTagSelector] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    email: '',
+    phone: '',
+    source: '',
+    campaign: '',
+    utm_source: '',
+    utm_medium: '',
+    utm_campaign: '',
+    utm_content: '',
+    utm_term: '',
+    family_income_range: '',
+    status: '',
+    classification: '',
+  });
 
   const [validationForm, setValidationForm] = useState({
     decisao_real: '',
@@ -86,10 +102,62 @@ export default function LeadDetail() {
       setScheduledActivities(scheduledRes.data || []);
       setLeadTags(tagsRes.data?.map(lt => lt.tags as unknown as Tag).filter(Boolean) || []);
       setAvailableTags(allTagsRes.data || []);
+
+      if (leadRes.data) {
+        setEditForm({
+          full_name: leadRes.data.full_name || '',
+          email: leadRes.data.email || '',
+          phone: leadRes.data.phone || '',
+          source: leadRes.data.source || '',
+          campaign: leadRes.data.campaign || '',
+          utm_source: leadRes.data.utm_source || '',
+          utm_medium: leadRes.data.utm_medium || '',
+          utm_campaign: leadRes.data.utm_campaign || '',
+          utm_content: leadRes.data.utm_content || '',
+          utm_term: leadRes.data.utm_term || '',
+          family_income_range: leadRes.data.family_income_range || '',
+          status: leadRes.data.status || '',
+          classification: leadRes.data.classification || '',
+        });
+      }
     } catch (error) {
       console.error('Error loading lead data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEditLead = async () => {
+    if (!id) return;
+
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .update({
+          full_name: editForm.full_name,
+          email: editForm.email || null,
+          phone: editForm.phone,
+          source: editForm.source,
+          campaign: editForm.campaign || null,
+          utm_source: editForm.utm_source || null,
+          utm_medium: editForm.utm_medium || null,
+          utm_campaign: editForm.utm_campaign || null,
+          utm_content: editForm.utm_content || null,
+          utm_term: editForm.utm_term || null,
+          family_income_range: editForm.family_income_range || null,
+          status: editForm.status,
+          classification: editForm.classification,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      await loadLeadData();
+      setIsEditing(false);
+      alert('Lead atualizado com sucesso!');
+    } catch (error) {
+      console.error('Error updating lead:', error);
+      alert('Erro ao atualizar lead');
     }
   };
 
@@ -400,12 +468,245 @@ export default function LeadDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <a href="/leads" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <ArrowLeft className="w-6 h-6" />
-        </a>
-        <h1 className="text-3xl font-bold text-gray-900">{lead.full_name}</h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <a href="/leads" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <ArrowLeft className="w-6 h-6" />
+          </a>
+          <h1 className="text-3xl font-bold text-gray-900">{lead.full_name}</h1>
+        </div>
+        <button
+          onClick={() => setIsEditing(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Edit className="w-4 h-4" />
+          Editar Lead
+        </button>
       </div>
+
+      {/* Modal de Edição */}
+      {isEditing && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">Editar Lead</h2>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Informações Básicas */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Informações Básicas</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Nome Completo *
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.full_name}
+                      onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Telefone *
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Faixa de Renda Familiar
+                    </label>
+                    <select
+                      value={editForm.family_income_range}
+                      onChange={(e) => setEditForm({ ...editForm, family_income_range: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="0-3k">Até R$ 3.000</option>
+                      <option value="3k-5k">R$ 3.000 - R$ 5.000</option>
+                      <option value="5k-10k">R$ 5.000 - R$ 10.000</option>
+                      <option value="10k-20k">R$ 10.000 - R$ 20.000</option>
+                      <option value="20k+">Acima de R$ 20.000</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status e Classificação */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Status e Classificação</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Status *
+                    </label>
+                    <select
+                      value={editForm.status}
+                      onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="new">Novo</option>
+                      <option value="contacted">Contatado</option>
+                      <option value="qualified">Qualificado</option>
+                      <option value="meeting_scheduled">Reunião Agendada</option>
+                      <option value="proposal_sent">Proposta Enviada</option>
+                      <option value="negotiation">Negociação</option>
+                      <option value="won">Ganho</option>
+                      <option value="lost">Perdido</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Classificação *
+                    </label>
+                    <select
+                      value={editForm.classification}
+                      onChange={(e) => setEditForm({ ...editForm, classification: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="hot">Quente</option>
+                      <option value="warm">Morno</option>
+                      <option value="cold">Frio</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Origem e Campanha */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Origem e Campanha</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Origem *
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.source}
+                      onChange={(e) => setEditForm({ ...editForm, source: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Ex: Facebook, Google, Site"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Campanha
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.campaign}
+                      onChange={(e) => setEditForm({ ...editForm, campaign: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Parâmetros UTM */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Parâmetros UTM</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      UTM Source
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.utm_source}
+                      onChange={(e) => setEditForm({ ...editForm, utm_source: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      UTM Medium
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.utm_medium}
+                      onChange={(e) => setEditForm({ ...editForm, utm_medium: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      UTM Campaign
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.utm_campaign}
+                      onChange={(e) => setEditForm({ ...editForm, utm_campaign: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      UTM Content
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.utm_content}
+                      onChange={(e) => setEditForm({ ...editForm, utm_content: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      UTM Term
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.utm_term}
+                      onChange={(e) => setEditForm({ ...editForm, utm_term: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex justify-end gap-3">
+              <button
+                onClick={() => setIsEditing(false)}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleEditLead}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                Salvar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
