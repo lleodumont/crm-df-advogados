@@ -288,12 +288,12 @@ export default function Dashboard() {
         <h2 className="text-lg font-semibold text-gray-900 mb-6">Funil de Conversão</h2>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           {metrics.funnelData.map((item, i) => (
-            <div key={i} className="relative">
-              <div className="bg-white border-2 border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
-                <div className="text-center">
-                  <div className="text-3xl font-bold mb-1 text-gray-900">{item.count}</div>
-                  <div className="text-sm font-medium text-gray-600">{item.stage}</div>
-                  <div className="text-xs mt-2 bg-gray-100 text-gray-700 rounded-full px-3 py-1 inline-block font-medium">
+            <div key={i} className="relative h-full">
+              <div className="bg-white border-2 border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors h-full flex items-center">
+                <div className="text-center w-full">
+                  <div className="text-3xl font-bold mb-2 text-gray-900">{item.count}</div>
+                  <div className="text-sm font-medium text-gray-600 mb-3">{item.stage}</div>
+                  <div className="text-xs bg-gray-100 text-gray-700 rounded-full px-3 py-1 inline-block font-medium">
                     {item.percentage.toFixed(0)}%
                   </div>
                 </div>
