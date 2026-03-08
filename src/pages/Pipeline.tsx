@@ -90,6 +90,13 @@ export default function Pipeline() {
 
   const updateLeadStatus = async (leadId: string, newStatus: LeadStatus) => {
     try {
+      // Atualização otimista: atualiza o estado local imediatamente
+      setLeads(prevLeads =>
+        prevLeads.map(lead =>
+          lead.id === leadId ? { ...lead, status: newStatus } : lead
+        )
+      );
+
       const { error } = await supabase
         .from('leads')
         .update({ status: newStatus, })
@@ -104,10 +111,10 @@ export default function Pipeline() {
         user_id: profile?.id,
         content: `Status alterado para: ${newStatus}`,
       });
-
-      loadLeads();
     } catch (error) {
       console.error('Error updating status:', error);
+      // Em caso de erro, recarrega os dados para garantir sincronização
+      loadLeads();
     }
   };
 
