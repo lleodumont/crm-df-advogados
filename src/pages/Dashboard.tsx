@@ -233,25 +233,21 @@ export default function Dashboard() {
           title="Total de Leads"
           value={metrics.totalLeads}
           icon={Users}
-          bgColor="bg-gradient-to-br from-blue-500 to-blue-600"
         />
         <MetricCard
           title="Qualificados"
           value={metrics.qualifiedCount}
           icon={CheckCircle}
-          bgColor="bg-gradient-to-br from-green-500 to-green-600"
         />
         <MetricCard
           title="Taxa de Conversão"
           value={`${metrics.conversionRate.toFixed(0)}%`}
           icon={TrendingUp}
-          bgColor="bg-gradient-to-br from-amber-400 to-amber-500"
         />
         <MetricCard
           title="Leads Hoje"
           value={metrics.todayLeads}
           icon={CalendarCheck}
-          bgColor="bg-gradient-to-br from-violet-500 to-violet-600"
         />
       </div>
 
@@ -260,49 +256,44 @@ export default function Dashboard() {
           title="Reuniões Agendadas"
           value={metrics.meetingsScheduled}
           icon={Calendar}
-          bgColor="bg-gradient-to-br from-violet-400 to-violet-500"
           compact
         />
         <MetricCard
           title="Comparecidas"
           value={metrics.meetingsHeld}
           icon={Users}
-          bgColor="bg-gradient-to-br from-cyan-500 to-cyan-600"
           compact
         />
         <MetricCard
           title="Vendas"
           value={metrics.dealsWon}
           icon={FileText}
-          bgColor="bg-gradient-to-br from-emerald-500 to-emerald-600"
           compact
         />
         <MetricCard
           title="Ticket Médio"
           value={`R$ ${(metrics.averageTicket / 1000).toFixed(1)}k`}
           icon={DollarSign}
-          bgColor="bg-gradient-to-br from-amber-500 to-amber-600"
           compact
         />
         <MetricCard
           title="Faturamento Total"
           value={`R$ ${(metrics.totalRevenue / 1000).toFixed(0)}k`}
           icon={DollarSign}
-          bgColor="bg-gradient-to-br from-green-500 to-green-600"
           compact
         />
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-bold text-gray-900 mb-6">Funil de Conversão</h2>
+      <div className="bg-white rounded-lg border border-gray-300 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-6">Funil de Conversão</h2>
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           {metrics.funnelData.map((item, i) => (
             <div key={i} className="relative">
-              <div className={`${item.color} rounded-lg p-6 text-white shadow-md hover:shadow-lg transition-shadow`}>
+              <div className="bg-white border-2 border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
                 <div className="text-center">
-                  <div className="text-3xl font-bold mb-1">{item.count}</div>
-                  <div className="text-sm font-medium opacity-90">{item.stage}</div>
-                  <div className="text-xs mt-2 bg-white/20 rounded-full px-2 py-1 inline-block">
+                  <div className="text-3xl font-bold mb-1 text-gray-900">{item.count}</div>
+                  <div className="text-sm font-medium text-gray-600">{item.stage}</div>
+                  <div className="text-xs mt-2 bg-gray-100 text-gray-700 rounded-full px-3 py-1 inline-block font-medium">
                     {item.percentage.toFixed(0)}%
                   </div>
                 </div>
@@ -313,8 +304,8 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-1">Leads por Etapa</h2>
+        <div className="bg-white rounded-lg border border-gray-300 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Leads por Etapa</h2>
           <p className="text-sm text-gray-500 mb-6">Clique em uma barra para ver os UTMs</p>
           <div className="space-y-4">
             {metrics.leadsByStatus.map((item, i) => {
@@ -329,14 +320,14 @@ export default function Dashboard() {
               return (
                 <div key={i}>
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="font-semibold text-gray-800">{statusLabels[item.status] || item.status}</span>
+                    <span className="font-medium text-gray-800">{statusLabels[item.status] || item.status}</span>
                     <span className="text-gray-600">
                       {item.count} ({item.percentage.toFixed(0)}%)
                     </span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                     <div
-                      className="bg-gradient-to-r from-red-500 to-amber-500 h-3 rounded-full transition-all duration-500"
+                      className="bg-blue-600 h-3 rounded-full transition-all duration-500"
                       style={{ width: `${Math.max(item.percentage, 2)}%` }}
                     />
                   </div>
@@ -346,8 +337,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6">Leads por Dia (últimos 14 dias)</h2>
+        <div className="bg-white rounded-lg border border-gray-300 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Leads por Dia (últimos 14 dias)</h2>
           <div className="h-64 flex items-end justify-between gap-1.5">
             {metrics.leadsByDay.map((day, i) => {
               const height = (day.count / maxLeadsPerDay) * 100;
@@ -359,7 +350,7 @@ export default function Dashboard() {
                 <div key={i} className="flex-1 flex flex-col items-center gap-2">
                   <div className="text-xs text-gray-600 font-medium">{day.count || ''}</div>
                   <div
-                    className="w-full bg-gradient-to-t from-amber-400 to-amber-500 rounded-t-lg transition-all hover:from-amber-500 hover:to-amber-600 cursor-pointer"
+                    className="w-full bg-blue-600 rounded-t-lg transition-all hover:bg-blue-700 cursor-pointer"
                     style={{ height: `${Math.max(height, 4)}%` }}
                     title={`${dayNum}/${month}: ${day.count} leads`}
                   />
@@ -372,25 +363,25 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6">Por UTM Source</h2>
+        <div className="bg-white rounded-lg border border-gray-300 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Por UTM Source</h2>
           <div className="space-y-3">
             {metrics.leadsByUTMSource.slice(0, 8).map((item, i) => (
               <div key={i} className="flex justify-between items-center">
                 <span className="text-sm font-medium text-gray-700">{item.source}</span>
-                <span className="text-sm font-bold text-gray-900 min-w-[3rem] text-right">{item.count}</span>
+                <span className="text-sm font-semibold text-gray-900 min-w-[3rem] text-right">{item.count}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6">Por UTM Medium</h2>
+        <div className="bg-white rounded-lg border border-gray-300 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Por UTM Medium</h2>
           <div className="space-y-3">
             {metrics.leadsByUTMMedium.slice(0, 8).map((item, i) => (
               <div key={i} className="flex justify-between items-center">
                 <span className="text-sm font-medium text-gray-700">{item.medium}</span>
-                <span className="text-sm font-bold text-gray-900 min-w-[3rem] text-right">{item.count}</span>
+                <span className="text-sm font-semibold text-gray-900 min-w-[3rem] text-right">{item.count}</span>
               </div>
             ))}
           </div>
@@ -398,25 +389,25 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6">Por UTM Campaign</h2>
+        <div className="bg-white rounded-lg border border-gray-300 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Por UTM Campaign</h2>
           <div className="space-y-3">
             {metrics.leadsByUTMCampaign.map((item, i) => (
               <div key={i} className="flex justify-between items-center">
                 <span className="text-sm font-medium text-gray-700 truncate flex-1">{item.campaign}</span>
-                <span className="text-sm font-bold text-gray-900 min-w-[3rem] text-right ml-4">{item.count}</span>
+                <span className="text-sm font-semibold text-gray-900 min-w-[3rem] text-right ml-4">{item.count}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6">Por UTM Content</h2>
+        <div className="bg-white rounded-lg border border-gray-300 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Por UTM Content</h2>
           <div className="space-y-3">
             {metrics.leadsByUTMContent.map((item, i) => (
               <div key={i} className="flex justify-between items-center">
                 <span className="text-sm font-medium text-gray-700 truncate flex-1">{item.content}</span>
-                <span className="text-sm font-bold text-gray-900 min-w-[3rem] text-right ml-4">{item.count}</span>
+                <span className="text-sm font-semibold text-gray-900 min-w-[3rem] text-right ml-4">{item.count}</span>
               </div>
             ))}
           </div>
@@ -424,8 +415,8 @@ export default function Dashboard() {
       </div>
 
       {metrics.leadAnswers.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6">Respostas dos Leads</h2>
+        <div className="bg-white rounded-lg border border-gray-300 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Respostas dos Leads</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {Array.from(new Set(metrics.leadAnswers.map(a => a.question))).map((question, i) => {
               const answers = metrics.leadAnswers.filter(a => a.question === question);
@@ -433,7 +424,7 @@ export default function Dashboard() {
 
               return (
                 <div key={i}>
-                  <h3 className="text-sm font-bold text-gray-800 mb-3 capitalize">
+                  <h3 className="text-sm font-semibold text-gray-800 mb-3 capitalize">
                     {question.replace(/_/g, ' ')}
                   </h3>
                   <div className="space-y-2">
@@ -445,9 +436,9 @@ export default function Dashboard() {
                             {answer.count} ({((answer.count / total) * 100).toFixed(0)}%)
                           </span>
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2">
+                        <div className="w-full bg-gray-200 rounded-full h-2">
                           <div
-                            className="bg-gradient-to-r from-amber-400 to-amber-500 h-2 rounded-full"
+                            className="bg-blue-600 h-2 rounded-full"
                             style={{ width: `${(answer.count / total) * 100}%` }}
                           />
                         </div>
@@ -468,20 +459,19 @@ interface MetricCardProps {
   title: string;
   value: string | number;
   icon: React.ElementType;
-  bgColor: string;
   compact?: boolean;
 }
 
-function MetricCard({ title, value, icon: Icon, bgColor, compact }: MetricCardProps) {
+function MetricCard({ title, value, icon: Icon, compact }: MetricCardProps) {
   return (
-    <div className={`${bgColor} rounded-xl shadow-md hover:shadow-lg transition-all p-${compact ? '4' : '6'} text-white`}>
+    <div className={`bg-white border border-gray-300 rounded-lg hover:border-gray-400 transition-colors ${compact ? 'p-4' : 'p-6'}`}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <div className={`text-${compact ? 'xs' : 'sm'} font-medium opacity-90 mb-1`}>{title}</div>
-          <div className={`text-${compact ? '2xl' : '3xl'} font-bold`}>{value}</div>
+          <div className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-gray-600 mb-1`}>{title}</div>
+          <div className={`${compact ? 'text-2xl' : 'text-3xl'} font-semibold text-gray-900`}>{value}</div>
         </div>
-        <div className="bg-white/20 p-2 rounded-lg">
-          <Icon className={`w-${compact ? '5' : '6'} h-${compact ? '5' : '6'}`} />
+        <div className="bg-gray-100 p-2 rounded-lg">
+          <Icon className={`${compact ? 'w-5 h-5' : 'w-6 h-6'} text-gray-600`} />
         </div>
       </div>
     </div>
