@@ -11,6 +11,7 @@ interface DashboardMetrics {
   conversionRate: number;
   todayLeads: number;
   meetingsScheduled: number;
+  totalScheduledEver: number;
   meetingsHeld: number;
   proposalsPresented: number;
   dealsWon: number;
@@ -53,6 +54,16 @@ export default function Dashboard() {
       const todayLeads = leads?.filter(l => l.created_at.startsWith(today)).length || 0;
 
       const meetingsScheduled = leads?.filter(l => l.status === 'agendado').length || 0;
+
+      // Total cumulativo: todos os leads que passaram por agendamento (estão em agendado ou avançaram)
+      const totalScheduledEver = leads?.filter(l =>
+        l.status === 'agendado' ||
+        l.status === 'compareceu' ||
+        l.status === 'proposta_enviada' ||
+        l.status === 'ganho' ||
+        l.status === 'perdido'
+      ).length || 0;
+
       const meetingsHeld = leads?.filter(l =>
         l.status === 'proposta_enviada' || l.status === 'ganho'
       ).length || 0;
@@ -176,9 +187,9 @@ export default function Dashboard() {
           color: 'bg-green-500',
         },
         {
-          stage: 'Reuniões Agendadas',
-          count: meetingsScheduled,
-          percentage: totalLeads > 0 ? (meetingsScheduled / totalLeads) * 100 : 0,
+          stage: 'Agendamentos (Total)',
+          count: totalScheduledEver,
+          percentage: totalLeads > 0 ? (totalScheduledEver / totalLeads) * 100 : 0,
           color: 'bg-purple-500',
         },
         {
@@ -201,6 +212,7 @@ export default function Dashboard() {
         conversionRate,
         todayLeads,
         meetingsScheduled,
+        totalScheduledEver,
         meetingsHeld,
         proposalsPresented,
         dealsWon,
@@ -259,9 +271,15 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <MetricCard
-          title="Reuniões Agendadas"
+          title="Total Agendamentos"
+          value={metrics.totalScheduledEver}
+          icon={CalendarCheck}
+          compact
+        />
+        <MetricCard
+          title="Aguardando Reunião"
           value={metrics.meetingsScheduled}
           icon={Calendar}
           compact
