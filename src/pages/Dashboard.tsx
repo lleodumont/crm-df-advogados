@@ -42,6 +42,7 @@ export default function Dashboard() {
       const { data: leads } = await supabase.from('leads').select('*');
       const { data: meetings } = await supabase.from('scheduled_activities').select('*');
       const { data: answers } = await supabase.from('lead_answers').select('*');
+      const { data: proposals } = await supabase.from('proposals').select('*');
 
       const totalLeads = leads?.length || 0;
       const qualifiedCount = leads?.filter(l =>
@@ -71,10 +72,17 @@ export default function Dashboard() {
         l.status === 'proposta_enviada' || l.status === 'ganho' || l.status === 'perdido'
       ).length || 0;
 
-      const totalRevenue = leads
-        ?.filter(l => l.status === 'ganho')
-        .reduce((sum, l) => sum + (l.deal_value || 0), 0) || 0;
-      const averageTicket = dealsWon > 0 ? totalRevenue / dealsWon : 0;
+      // Calcular faturamento total baseado nas propostas ganhas
+      const totalRevenue = proposals
+        ?.filter(p => p.status === 'won')
+        .reduce((sum, p) => sum + (p.value || 0), 0) || 0;
+
+      // Contar quantos leads têm pelo menos uma proposta ganha
+      const leadsWithWonProposals = new Set(
+        proposals?.filter(p => p.status === 'won').map(p => p.lead_id) || []
+      ).size;
+
+      const averageTicket = leadsWithWonProposals > 0 ? totalRevenue / leadsWithWonProposals : 0;
 
       const last14Days = Array.from({ length: 14 }, (_, i) => {
         const date = new Date();
@@ -298,13 +306,13 @@ export default function Dashboard() {
         />
         <MetricCard
           title="Ticket Médio"
-          value={metrics.averageTicket > 0 ? `R$ ${(metrics.averageTicket / 1000).toFixed(1)}k` : '-'}
+          value={metrics.averageTicket > 0 ? `R$ ${metrics.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
           icon={DollarSign}
           compact
         />
         <MetricCard
           title="Faturamento Total"
-          value={metrics.totalRevenue > 0 ? `R$ ${(metrics.totalRevenue / 1000).toFixed(0)}k` : '-'}
+          value={metrics.totalRevenue > 0 ? `R$ ${metrics.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
           icon={DollarSign}
           compact
         />

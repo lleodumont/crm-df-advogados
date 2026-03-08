@@ -32,8 +32,6 @@ export default function LeadDetail() {
   const [leadTags, setLeadTags] = useState<Tag[]>([]);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [showTagSelector, setShowTagSelector] = useState(false);
-  const [showDealValueModal, setShowDealValueModal] = useState(false);
-  const [dealValue, setDealValue] = useState('');
 
   const [validationForm, setValidationForm] = useState({
     decisao_real: '',
@@ -298,43 +296,6 @@ export default function LeadDetail() {
     }
   };
 
-  const updateDealValue = async () => {
-    if (!id) return;
-
-    try {
-      const value = parseFloat(dealValue.replace(/\D/g, ''));
-      if (value <= 0) {
-        alert('Por favor, insira um valor válido');
-        return;
-      }
-
-      const { error } = await supabase
-        .from('leads')
-        .update({
-          deal_value: value,
-          closed_at: lead?.closed_at || new Date().toISOString()
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      await supabase.from('activities').insert({
-        lead_id: id,
-        type: 'note',
-        channel: 'internal',
-        user_id: profile?.id,
-        content: `Valor do negócio atualizado: R$ ${value.toLocaleString('pt-BR')}`,
-      });
-
-      setShowDealValueModal(false);
-      setDealValue('');
-      loadLeadData();
-      alert('Valor do negócio atualizado com sucesso!');
-    } catch (error) {
-      console.error('Error updating deal value:', error);
-      alert('Erro ao atualizar valor do negócio');
-    }
-  };
 
   const removeTag = async (tagId: string) => {
     if (!id) return;
@@ -431,6 +392,11 @@ export default function LeadDetail() {
       </div>
     );
   }
+
+  // Calcular valor total das propostas ganhas
+  const totalWonProposalsValue = proposals
+    .filter(p => p.status === 'won')
+    .reduce((sum, p) => sum + (p.value || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -577,19 +543,10 @@ export default function LeadDetail() {
                 <div className="text-gray-600">Fechamento</div>
                 <div className="font-medium text-gray-900">{formatDate(lead.closed_at)}</div>
                 <div className="flex items-center gap-2 mt-1">
-                  {lead.deal_value && (
-                    <div className="text-green-600 font-bold">R$ {lead.deal_value.toLocaleString('pt-BR')}</div>
-                  )}
-                  {(lead.status === 'ganho' && (profile?.role === 'admin' || profile?.role === 'comercial')) && (
-                    <button
-                      onClick={() => {
-                        setDealValue(lead.deal_value ? lead.deal_value.toString() : '');
-                        setShowDealValueModal(true);
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-800 underline"
-                    >
-                      {lead.deal_value ? 'Editar' : 'Adicionar valor'}
-                    </button>
+                  {totalWonProposalsValue > 0 && (
+                    <div className="text-green-600 font-bold">
+                      R$ {totalWonProposalsValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1100,7 +1057,7 @@ export default function LeadDetail() {
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
                           <DollarSign className="w-5 h-5 text-gray-400" />
-                          <span className="font-bold text-gray-900">R$ {proposal.value.toLocaleString('pt-BR')}</span>
+                          <span className="font-bold text-gray-900">R$ {proposal.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </div>
                         <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                           proposal.status === 'won' ? 'bg-green-100 text-green-800' :
@@ -1339,49 +1296,6 @@ export default function LeadDetail() {
         </div>
       </div>
 
-      {showDealValueModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Valor do Negócio</h2>
-            <p className="text-gray-600 mb-4">Informe o valor do negócio fechado:</p>
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Valor (R$)
-              </label>
-              <input
-                type="text"
-                value={dealValue}
-                onChange={(e) => {
-                  const value = e.target.value.replace(/\D/g, '');
-                  const formatted = new Intl.NumberFormat('pt-BR').format(Number(value));
-                  setDealValue(formatted);
-                }}
-                placeholder="0"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowDealValueModal(false);
-                  setDealValue('');
-                }}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={updateDealValue}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
