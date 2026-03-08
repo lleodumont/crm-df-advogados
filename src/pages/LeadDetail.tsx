@@ -430,7 +430,7 @@ export default function LeadDetail() {
         <div className="mt-6 pt-6 border-t border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex items-center gap-3">
             <Phone className="w-5 h-5 text-gray-400" />
-            <a href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+            <a href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} target="_blank\" rel="noopener noreferrer\" className="text-blue-600 hover:text-blue-800">
               {lead.phone}
             </a>
           </div>
@@ -682,7 +682,7 @@ export default function LeadDetail() {
                     <div>
                       <div className="text-xs text-gray-500 mb-1">Telefone</div>
                       <div className="text-sm font-medium text-gray-900">
-                        <a href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        <a href={`https://wa.me/${lead.phone.replace(/\D/g, '')}`} target="_blank\" rel="noopener noreferrer\" className="text-blue-600 hover:underline">
                           {lead.phone}
                         </a>
                       </div>

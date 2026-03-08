@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Layers, Plus, X, Edit2, Check, ArrowUp, ArrowDown, AlertCircle } from 'lucide-react';
+import { Layers, Plus, X, CreditCard as Edit2, Check, ArrowUp, ArrowDown, AlertCircle } from 'lucide-react';
 
 interface Stage {
   id: string;

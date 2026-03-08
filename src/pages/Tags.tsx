@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Tag, Plus, X, Edit2, Check } from 'lucide-react';
+import { Tag, Plus, X, CreditCard as Edit2, Check } from 'lucide-react';
 
 interface Tag {
   id: string;
