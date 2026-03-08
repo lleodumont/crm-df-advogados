@@ -464,13 +464,13 @@ interface MetricCardProps {
 
 function MetricCard({ title, value, icon: Icon, compact }: MetricCardProps) {
   return (
-    <div className={`bg-white border border-gray-300 rounded-lg hover:border-gray-400 transition-colors ${compact ? 'p-4' : 'p-6'}`}>
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-gray-600 mb-1`}>{title}</div>
+    <div className={`bg-white border border-gray-300 rounded-lg hover:border-gray-400 transition-colors h-full ${compact ? 'p-4' : 'p-6'}`}>
+      <div className="flex items-start justify-between h-full">
+        <div className="flex-1 flex flex-col justify-between">
+          <div className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-gray-600 mb-2`}>{title}</div>
           <div className={`${compact ? 'text-2xl' : 'text-3xl'} font-semibold text-gray-900`}>{value}</div>
         </div>
-        <div className="bg-gray-100 p-2 rounded-lg">
+        <div className="bg-gray-100 p-2 rounded-lg flex-shrink-0">
           <Icon className={`${compact ? 'w-5 h-5' : 'w-6 h-6'} text-gray-600`} />
         </div>
       </div>
