@@ -6,7 +6,7 @@ interface Tag {
   id: string;
   name: string;
   color: string;
-  created_at: string;
+  created_at: string | null;
 }
 
 const PRESET_COLORS = [

@@ -65,29 +65,36 @@ export default function Instructions() {
               </p>
             </div>
 
+            <div className="border-l-4 border-orange-400 pl-4">
+              <h3 className="font-semibold text-gray-900 mb-1">6. Não Compareceu</h3>
+              <p className="text-gray-600 text-sm">
+                Lead tinha reunião agendada mas não compareceu. Tentar reagendamento ou mover para maturação.
+              </p>
+            </div>
+
             <div className="border-l-4 border-orange-500 pl-4">
-              <h3 className="font-semibold text-gray-900 mb-1">6. Proposta Enviada</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">7. Proposta Enviada</h3>
               <p className="text-gray-600 text-sm">
                 Proposta comercial enviada ao lead. Aguardando resposta e negociação.
               </p>
             </div>
 
             <div className="border-l-4 border-green-600 pl-4">
-              <h3 className="font-semibold text-gray-900 mb-1">7. Ganho</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">8. Ganho</h3>
               <p className="text-gray-600 text-sm">
                 Negócio fechado com sucesso. Lead se tornou cliente.
               </p>
             </div>
 
             <div className="border-l-4 border-red-500 pl-4">
-              <h3 className="font-semibold text-gray-900 mb-1">8. Perdido</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">9. Perdido</h3>
               <p className="text-gray-600 text-sm">
                 Negócio não concretizado. Documentar motivo da perda para aprendizado.
               </p>
             </div>
 
             <div className="border-l-4 border-gray-500 pl-4">
-              <h3 className="font-semibold text-gray-900 mb-1">9. Maturação</h3>
+              <h3 className="font-semibold text-gray-900 mb-1">10. Maturação</h3>
               <p className="text-gray-600 text-sm">
                 Lead com potencial mas sem condições atuais de fechamento. Manter contato periódico.
               </p>
@@ -102,72 +109,78 @@ export default function Instructions() {
           </h2>
 
           <p className="text-gray-700 mb-6">
-            O score total é calculado com base em 4 dimensões que avaliam a qualidade e probabilidade de conversão do lead:
+            O score total é calculado com base em 4 pilares que avaliam a qualidade e probabilidade de conversão do lead.
+            A pontuação máxima é <strong>100 pontos</strong>.
           </p>
 
           <div className="space-y-6">
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-blue-600"></div>
-                <h3 className="font-semibold text-gray-900">Score de Decisão (0-10 pontos)</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                  <h3 className="font-semibold text-gray-900">Pilar Decisão (0–40 pontos)</h3>
+                </div>
+                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">Peso 40%</span>
               </div>
               <p className="text-gray-600 text-sm mb-2">
-                Avalia o poder de decisão e autonomia do lead para fechar negócio.
+                Avalia o estágio de decisão, prazo para agir e autonomia do lead para fechar negócio.
               </p>
-              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
-                <li><strong>0-3:</strong> Influenciador sem poder de decisão</li>
-                <li><strong>4-6:</strong> Precisa de aprovação de terceiros</li>
-                <li><strong>7-8:</strong> Decisor compartilhado</li>
-                <li><strong>9-10:</strong> Decisor único e autônomo</li>
-              </ul>
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm text-gray-600">
+                <p><strong>Estágio de decisão:</strong> Decidido = 25 pts · Quase decidido = 15 pts · Avaliando = 5 pts</p>
+                <p><strong>Prazo:</strong> Até 7 dias = 10 pts · Até 30 dias = 5 pts</p>
+                <p><strong>Autonomia:</strong> Decide sozinho = 5 pts · Precisa alinhar = 3 pts · Não sabe = 1 pt</p>
+              </div>
             </div>
 
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-orange-600"></div>
-                <h3 className="font-semibold text-gray-900">Score de Urgência (0-10 pontos)</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-orange-600"></div>
+                  <h3 className="font-semibold text-gray-900">Pilar Urgência (0–30 pontos)</h3>
+                </div>
+                <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded-full">Peso 30%</span>
               </div>
               <p className="text-gray-600 text-sm mb-2">
-                Mede a necessidade imediata e timing para fechamento.
+                Mede a necessidade imediata e o risco de não agir rapidamente.
               </p>
-              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
-                <li><strong>0-3:</strong> Sem urgência, pode esperar meses</li>
-                <li><strong>4-6:</strong> Interesse em algumas semanas</li>
-                <li><strong>7-8:</strong> Precisa resolver em dias</li>
-                <li><strong>9-10:</strong> Urgência crítica, precisa agora</li>
-              </ul>
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm text-gray-600">
+                <p><strong>Urgência declarada:</strong> Alta = 30 pts · Média = 15 pts · Baixa = 5 pts</p>
+                <p><strong>Situações de risco:</strong> Processo existente = +15 · Ameaça de processo = +10 · Conflito de bens = +8 · Disputa de filhos = +8</p>
+                <p><strong>Risco nos próximos 15 dias:</strong> Sim = +10 · Talvez = +5</p>
+              </div>
             </div>
 
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-green-600"></div>
-                <h3 className="font-semibold text-gray-900">Score de Patrimônio (0-10 pontos)</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-green-600"></div>
+                  <h3 className="font-semibold text-gray-900">Pilar Patrimônio (0–25 pontos)</h3>
+                </div>
+                <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full">Peso 25%</span>
               </div>
               <p className="text-gray-600 text-sm mb-2">
-                Avalia capacidade financeira e complexidade patrimonial.
+                Avalia o volume e a complexidade do patrimônio do lead.
               </p>
-              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
-                <li><strong>0-3:</strong> Patrimônio básico, sem complexidade</li>
-                <li><strong>4-6:</strong> Patrimônio médio, alguns bens</li>
-                <li><strong>7-8:</strong> Patrimônio significativo e diversificado</li>
-                <li><strong>9-10:</strong> Alto patrimônio com grande complexidade</li>
-              </ul>
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm text-gray-600">
+                <p><strong>Valor dos bens:</strong> Acima de R$ 1M = 20 pts · R$ 500k–1M = 12 pts · R$ 200k–500k = 7 pts · Até R$ 200k = 3 pts</p>
+                <p><strong>Tipo de bens:</strong> Registrado para contexto da negociação (não impacta o score)</p>
+              </div>
             </div>
 
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2 h-2 rounded-full bg-purple-600"></div>
-                <h3 className="font-semibold text-gray-900">Score de Fit (0-10 pontos)</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-purple-600"></div>
+                  <h3 className="font-semibold text-gray-900">Pilar Fit (0–5 pontos)</h3>
+                </div>
+                <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded-full">Peso 5%</span>
               </div>
               <p className="text-gray-600 text-sm mb-2">
-                Analisa aderência do lead ao perfil ideal de cliente.
+                Analisa aderência do lead ao serviço oferecido.
               </p>
-              <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 ml-4">
-                <li><strong>0-3:</strong> Pouca aderência ao serviço</li>
-                <li><strong>4-6:</strong> Fit razoável, alguns ajustes necessários</li>
-                <li><strong>7-8:</strong> Bom fit, alinhado com a proposta</li>
-                <li><strong>9-10:</strong> Fit perfeito, cliente ideal</li>
-              </ul>
+              <div className="bg-gray-50 rounded-lg p-3 space-y-1 text-sm text-gray-600">
+                <p><strong>Condução completa:</strong> 5 pts · <strong>Não sabe:</strong> 2 pts · <strong>Outros:</strong> 0 pts</p>
+              </div>
             </div>
           </div>
 
@@ -175,10 +188,11 @@ export default function Instructions() {
             <div className="flex items-start gap-2">
               <Star className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
               <div>
-                <h4 className="font-semibold text-gray-900 mb-1">Score Total</h4>
+                <h4 className="font-semibold text-gray-900 mb-1">Score Total (0–100 pontos)</h4>
                 <p className="text-sm text-gray-700">
-                  O <strong>Score Total</strong> é a soma dos 4 scores (0-40 pontos). Leads com score acima de 28 pontos
-                  são considerados prioritários e devem receber atenção especial da equipe comercial.
+                  Soma dos 4 pilares. Leads com score acima de <strong>70 pontos</strong> são super qualificados
+                  e devem receber atenção imediata. Leads com score entre <strong>40 e 69</strong> são qualificados
+                  e devem ser acompanhados ativamente.
                 </p>
               </div>
             </div>
@@ -193,20 +207,26 @@ export default function Instructions() {
 
           <div className="space-y-4">
             <div className="p-4 bg-gradient-to-r from-green-50 to-white rounded-lg border border-green-200">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-full bg-green-600"></div>
-                <h3 className="font-semibold text-gray-900">Qualificado de alto valor (28-40 pontos)</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-600"></div>
+                  <h3 className="font-semibold text-gray-900">Super qualificado (70–100 pontos)</h3>
+                </div>
+                <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full">Prioridade máxima</span>
               </div>
               <p className="text-gray-700 text-sm">
                 Leads de altíssimo valor. Decisores com urgência, alto patrimônio e fit perfeito.
-                Prioridade máxima no atendimento. Esses leads têm maior probabilidade de conversão e ticket médio elevado.
+                Devem ser contatados em até 1 hora após entrada no sistema.
               </p>
             </div>
 
             <div className="p-4 bg-gradient-to-r from-yellow-50 to-white rounded-lg border border-yellow-200">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-full bg-yellow-600"></div>
-                <h3 className="font-semibold text-gray-900">Qualificado (15-27 pontos)</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-yellow-600"></div>
+                  <h3 className="font-semibold text-gray-900">Qualificado (40–69 pontos)</h3>
+                </div>
+                <span className="text-xs font-bold text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full">Atenção regular</span>
               </div>
               <p className="text-gray-700 text-sm">
                 Leads com bom potencial. Possuem características favoráveis mas podem precisar de mais trabalho
@@ -215,9 +235,12 @@ export default function Instructions() {
             </div>
 
             <div className="p-4 bg-gradient-to-r from-gray-50 to-white rounded-lg border border-gray-200">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-3 h-3 rounded-full bg-gray-600"></div>
-                <h3 className="font-semibold text-gray-900">Morno (0-14 pontos)</h3>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-gray-600"></div>
+                  <h3 className="font-semibold text-gray-900">Morno (0–39 pontos)</h3>
+                </div>
+                <span className="text-xs font-bold text-gray-600 bg-gray-100 px-2 py-1 rounded-full">Contato esporádico</span>
               </div>
               <p className="text-gray-700 text-sm">
                 Leads com baixo potencial imediato. Podem estar em fase de pesquisa ou não ter fit adequado.
@@ -234,13 +257,13 @@ export default function Instructions() {
             <li className="flex items-start gap-3">
               <div className="w-2 h-2 rounded-full bg-green-600 mt-2 flex-shrink-0"></div>
               <p className="text-gray-700">
-                <strong>Responda rápido:</strong> Leads qualificados de alto valor devem ser contatados em até 1 hora após entrada no sistema
+                <strong>Responda rápido:</strong> Leads super qualificados (score ≥ 70) devem ser contatados em até 1 hora após entrada no sistema
               </p>
             </li>
             <li className="flex items-start gap-3">
               <div className="w-2 h-2 rounded-full bg-green-600 mt-2 flex-shrink-0"></div>
               <p className="text-gray-700">
-                <strong>Atualize o score:</strong> Sempre que obtiver novas informações, atualize os scores para manter a classificação precisa
+                <strong>Atualize o score:</strong> Sempre que obtiver novas informações na triagem, atualize as respostas para manter a classificação precisa
               </p>
             </li>
             <li className="flex items-start gap-3">

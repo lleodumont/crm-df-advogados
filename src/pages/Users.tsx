@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { UserPlus, Shield, Eye, Phone, Trash2 } from 'lucide-react';
+import { UserPlus, Shield, Eye, Phone } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -152,7 +152,7 @@ export default function Users() {
       atendimento: 'Atendimento',
       viewer: 'Visualizador',
     };
-    return labels[role];
+    return labels[role as keyof typeof labels];
   };
 
   if (loading) {
@@ -267,7 +267,7 @@ export default function Users() {
         </ul>
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded-lg shadow">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -311,7 +311,7 @@ export default function Users() {
                         <RoleIcon className="w-4 h-4" />
                         {getRoleLabel(user.role)}
                       </div>
-                      <div className="absolute left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 hidden group-hover:block z-10">
+                      <div className="absolute left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 hidden group-hover:block z-50">
                         {(['admin', 'comercial', 'atendimento', 'viewer'] as UserRole[]).map((role) => (
                           <button
                             key={role}
@@ -326,7 +326,7 @@ export default function Users() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button
-                      onClick={() => toggleUserActive(user.id, user.active)}
+                      onClick={() => toggleUserActive(user.id, user.active ?? false)}
                       className={`px-3 py-1 rounded-full text-xs font-medium ${
                         user.active
                           ? 'bg-green-100 text-green-800'
@@ -337,12 +337,12 @@ export default function Users() {
                     </button>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(user.created_at).toLocaleDateString('pt-BR')}
+                    {user.created_at ? new Date(user.created_at).toLocaleDateString('pt-BR') : '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     {user.id !== profile?.id && (
                       <button
-                        onClick={() => toggleUserActive(user.id, user.active)}
+                        onClick={() => toggleUserActive(user.id, user.active ?? false)}
                         className="text-gray-600 hover:text-gray-900"
                         title={user.active ? 'Desativar' : 'Ativar'}
                       >

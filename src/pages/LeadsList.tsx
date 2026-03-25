@@ -14,8 +14,22 @@ interface Tag {
   color: string;
 }
 
+interface PipelineStage {
+  id: string;
+  name: string;
+  stage_key: string;
+  color: string;
+  order_index: number;
+}
+
 interface LeadWithTags extends Lead {
   tags?: Tag[];
+}
+
+interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
 }
 
 interface Filters {
@@ -27,6 +41,15 @@ interface Filters {
   scoreMax: number;
   familyIncomeRange: string;
   tagIds: string[];
+  entryDateStart: string;
+  entryDateEnd: string;
+  wonDateStart: string;
+  wonDateEnd: string;
+  utmSource: string;
+  utmMedium: string;
+  utmCampaign: string;
+  utmContent: string;
+  utmTerm: string;
 }
 
 export default function LeadsList() {
@@ -35,21 +58,87 @@ export default function LeadsList() {
   const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
-  const [filters, setFilters] = useState<Filters>({
-    search: '',
-    status: 'all',
-    classification: 'all',
-    source: 'all',
-    scoreMin: 0,
-    scoreMax: 100,
-    familyIncomeRange: 'all',
-    tagIds: [],
+  const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [staleOnly, setStaleOnly] = useState(() => {
+    return new URLSearchParams(window.location.search).get('stale') === 'true';
   });
+  const [staleLeadIds, setStaleLeadIds] = useState<string[]>([]);
+  // Filtro de múltiplos status via URL (?statuses=agendado,compareceu,...)
+  const [multiStatuses, setMultiStatuses] = useState<string[] | null>(() => {
+    const val = new URLSearchParams(window.location.search).get('statuses');
+    return val ? val.split(',') : null;
+  });
+
+  const [filters, setFilters] = useState<Filters>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const today = new Date().toISOString().slice(0, 10);
+    return {
+      search: '',
+      status: (params.get('status') as any) || 'all',
+      classification: (params.get('classification') as any) || 'all',
+      source: 'all',
+      scoreMin: params.get('scoreMin') ? Number(params.get('scoreMin')) : 0,
+      scoreMax: 100,
+      familyIncomeRange: 'all',
+      tagIds: [],
+      entryDateStart: params.get('today') === 'true' ? today : '',
+      entryDateEnd: params.get('today') === 'true' ? today : '',
+      wonDateStart: '',
+      wonDateEnd: '',
+      utmSource: '',
+      utmMedium: '',
+      utmCampaign: '',
+      utmContent: '',
+      utmTerm: '',
+    };
+  });
+
+  // Banner para indicar filtro vindo do dashboard
+  const urlFilter = (() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('today') === 'true') return 'Leads captados hoje';
+    if (params.get('status') === 'ganho') return 'Leads ganhos (contratos fechados)';
+    if (params.get('status') === 'agendado') return 'Leads aguardando reunião';
+    if (params.get('status') === 'compareceu') return 'Leads que compareceram à reunião';
+    if (params.get('status') === 'no_show') return 'Leads que não compareceram';
+    if (params.get('classification') === 'qualificado') return 'Leads qualificados e super qualificados';
+    if (params.get('statuses') === 'agendado,compareceu,proposta_enviada,ganho,perdido') return 'Total de agendamentos (histórico completo)';
+    if (params.get('statuses') === 'compareceu,proposta_enviada,ganho,perdido') return 'Leads que compareceram à reunião';
+    if (params.get('statuses') === 'triagem,qualificado' && params.get('scoreMin') === '15') return 'Leads "quentes" — triagem/qualificado com score ≥ 15';
+    if (params.get('statuses')) return 'Leads filtrados por múltiplos status';
+    return null;
+  })();
+
+  useEffect(() => {
+    loadStages();
+    loadTags();
+    loadUsers();
+    if (staleOnly) loadStaleIds();
+  }, []);
 
   useEffect(() => {
     loadLeads();
-    loadTags();
-  }, [filters]);
+  }, [filters, staleLeadIds, multiStatuses]);
+
+  const loadStaleIds = async () => {
+    const { data } = await supabase.from('vw_stale_strategic_leads').select('lead_id');
+    setStaleLeadIds(data?.map((r: any) => r.lead_id) ?? []);
+  };
+
+  const loadStages = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pipeline_stages')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (error) throw error;
+      setStages(data || []);
+    } catch (error) {
+      console.error('Error loading stages:', error);
+    }
+  };
 
   const loadTags = async () => {
     try {
@@ -65,21 +154,46 @@ export default function LeadsList() {
     }
   };
 
+  const loadUsers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('id, email, full_name')
+        .order('full_name');
+
+      if (error) throw error;
+      setUsers(data || []);
+    } catch (error) {
+      console.error('Error loading users:', error);
+    }
+  };
+
   const loadLeads = async () => {
     setLoading(true);
     try {
       let query = supabase.from('leads').select('*');
 
       if (filters.search) {
-        query = query.or(`full_name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+        if (filters.search.length >= 3) {
+          query = query.textSearch('search_vector', filters.search, { type: 'websearch', config: 'portuguese' });
+        } else {
+          query = query.or(`full_name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,email.ilike.%${filters.search}%`);
+        }
       }
 
-      if (filters.status !== 'all') {
+      if (multiStatuses) {
+        query = query.in('status', multiStatuses);
+      } else if (filters.status !== 'all') {
         query = query.eq('status', filters.status);
       }
 
       if (filters.classification !== 'all') {
-        query = query.eq('classification', filters.classification);
+        // 'qualificado' inclui também 'estrategico' (super qualificado) pois são mais qualificados ainda
+        if (filters.classification === 'qualificado') {
+          query = query.in('classification', ['qualificado', 'estrategico']);
+        } else {
+          query = query.eq('classification', filters.classification);
+        }
       }
 
       if (filters.source !== 'all') {
@@ -90,7 +204,37 @@ export default function LeadsList() {
         query = query.eq('family_income_range', filters.familyIncomeRange);
       }
 
-      query = query.gte('score_total', filters.scoreMin).lte('score_total', filters.scoreMax);
+      if (filters.entryDateStart) {
+        query = query.gte('created_at', `${filters.entryDateStart}T00:00:00.000Z`);
+      }
+      if (filters.entryDateEnd) {
+        query = query.lte('created_at', `${filters.entryDateEnd}T23:59:59.999Z`);
+      }
+
+      if (filters.wonDateStart) {
+        query = query.gte('closed_at', `${filters.wonDateStart}T00:00:00.000Z`);
+      }
+      if (filters.wonDateEnd) {
+        query = query.lte('closed_at', `${filters.wonDateEnd}T23:59:59.999Z`);
+      }
+
+      if (filters.utmSource) query = query.ilike('utm_source', `%${filters.utmSource}%`);
+      if (filters.utmMedium) query = query.ilike('utm_medium', `%${filters.utmMedium}%`);
+      if (filters.utmCampaign) query = query.ilike('utm_campaign', `%${filters.utmCampaign}%`);
+      if (filters.utmContent) query = query.ilike('utm_content', `%${filters.utmContent}%`);
+      if (filters.utmTerm) query = query.ilike('utm_term', `%${filters.utmTerm}%`);
+
+      if (filters.scoreMin > 0) query = query.gte('score_total', filters.scoreMin);
+      if (filters.scoreMax < 100) query = query.lte('score_total', filters.scoreMax);
+
+      if (staleOnly && staleLeadIds.length > 0) {
+        query = query.in('id', staleLeadIds);
+      } else if (staleOnly && staleLeadIds.length === 0) {
+        // Nenhum lead stale — retorna vazio sem bater no banco
+        setLeads([]);
+        setLoading(false);
+        return;
+      }
 
       const { data: leadsData, error } = await query.order('score_total', { ascending: false }).order('created_at', { ascending: false });
 
@@ -164,21 +308,24 @@ export default function LeadsList() {
     }
   };
 
-  const assignToMe = async (leadId: string) => {
+  const assignLead = async (leadId: string, userId: string) => {
     try {
       const { error } = await supabase
         .from('leads')
-        .update({ owner_user_id: profile?.id })
+        .update({ owner_user_id: userId })
         .eq('id', leadId);
 
       if (error) throw error;
+
+      const assignedUser = users.find(u => u.id === userId);
+      const userName = assignedUser?.full_name || assignedUser?.email || 'um usuário';
 
       await supabase.from('activities').insert({
         lead_id: leadId,
         type: 'note',
         channel: 'internal',
         user_id: profile?.id,
-        content: `Lead atribuído para ${profile?.full_name || profile?.email}`,
+        content: `Lead atribuído para ${userName}`,
       });
 
       loadLeads();
@@ -200,27 +347,9 @@ export default function LeadsList() {
     }
   };
 
-  const getStatusColor = (status: LeadStatus) => {
-    switch (status) {
-      case 'ganho':
-        return 'bg-green-100 text-green-800';
-      case 'perdido':
-        return 'bg-red-100 text-red-800';
-      case 'proposta_enviada':
-        return 'bg-blue-100 text-blue-800';
-      case 'compareceu':
-        return 'bg-blue-100 text-blue-800';
-      case 'agendado':
-        return 'bg-cyan-100 text-cyan-800';
-      case 'qualificado':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'triagem':
-        return 'bg-orange-100 text-orange-800';
-      case 'maturacao':
-        return 'bg-purple-100 text-purple-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const getStageDisplay = (statusKey: string) => {
+    const stage = stages.find(s => s.stage_key === statusKey);
+    return stage ? { name: stage.name, color: stage.color } : { name: statusKey.replace('_', ' '), color: '#6B7280' };
   };
 
   const formatDate = (dateString: string) => {
@@ -241,6 +370,34 @@ export default function LeadsList() {
 
   return (
     <div className="space-y-6">
+      {staleOnly && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-3 text-sm text-amber-800">
+          <span className="text-amber-500">⚠️</span>
+          <span>Mostrando <strong>{leads.length} lead{leads.length !== 1 ? 's' : ''} estratégico{leads.length !== 1 ? 's' : ''}</strong> sem atividade há mais de 24h</span>
+          <button
+            onClick={() => { setStaleOnly(false); window.history.replaceState({}, '', '/leads'); }}
+            className="ml-auto text-amber-700 underline font-medium hover:text-amber-900"
+          >
+            Ver todos os leads
+          </button>
+        </div>
+      )}
+      {urlFilter && !staleOnly && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center gap-3 text-sm text-blue-800">
+          <span>🔍</span>
+          <span>Filtro ativo: <strong>{urlFilter}</strong> — {leads.length} lead{leads.length !== 1 ? 's' : ''}</span>
+          <button
+            onClick={() => {
+              setFilters(f => ({ ...f, status: 'all', classification: 'all', entryDateStart: '', entryDateEnd: '', scoreMin: 0, scoreMax: 100 }));
+              setMultiStatuses(null);
+              window.history.replaceState({}, '', '/leads');
+            }}
+            className="ml-auto text-blue-700 underline font-medium hover:text-blue-900"
+          >
+            Limpar filtro
+          </button>
+        </div>
+      )}
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
         <a
@@ -283,15 +440,9 @@ export default function LeadsList() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">Todos</option>
-                <option value="novo">Novo</option>
-                <option value="triagem">Triagem</option>
-                <option value="qualificado">Qualificado</option>
-                <option value="agendado">Agendado</option>
-                <option value="compareceu">Compareceu</option>
-                <option value="proposta_enviada">Proposta Enviada</option>
-                <option value="ganho">Ganho</option>
-                <option value="perdido">Perdido</option>
-                <option value="maturacao">Maturação</option>
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.stage_key}>{stage.name}</option>
+                ))}
               </select>
             </div>
 
@@ -303,7 +454,7 @@ export default function LeadsList() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">Todas</option>
-                <option value="estrategico">Qualificado de alto valor</option>
+                <option value="estrategico">Super qualificado</option>
                 <option value="qualificado">Qualificado</option>
                 <option value="morno">Morno</option>
               </select>
@@ -358,8 +509,7 @@ export default function LeadsList() {
                     }`}
                     style={{
                       backgroundColor: tag.color,
-                      color: 'white',
-                      ringColor: tag.color
+                      color: 'white'
                     }}
                   >
                     {tag.name}
@@ -389,12 +539,111 @@ export default function LeadsList() {
                 <option value="prefiro_nao_informar">Prefiro informar na conversa</option>
               </select>
             </div>
+
+            <div className="md:col-span-4 mt-4 mb-2 border-b border-gray-100 pb-2">
+              <h4 className="text-sm font-semibold text-gray-700">Filtros de Data</h4>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Entrada (De)</label>
+              <input
+                type="date"
+                value={filters.entryDateStart}
+                onChange={(e) => setFilters({ ...filters, entryDateStart: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Entrada (Ate)</label>
+              <input
+                type="date"
+                value={filters.entryDateEnd}
+                onChange={(e) => setFilters({ ...filters, entryDateEnd: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Ganho (De)</label>
+              <input
+                type="date"
+                value={filters.wonDateStart}
+                onChange={(e) => setFilters({ ...filters, wonDateStart: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data de Ganho (Ate)</label>
+              <input
+                type="date"
+                value={filters.wonDateEnd}
+                onChange={(e) => setFilters({ ...filters, wonDateEnd: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="md:col-span-4 mt-4 mb-2 border-b border-gray-100 pb-2">
+              <h4 className="text-sm font-semibold text-gray-700">Parâmetros UTM</h4>
+            </div>
+
+            <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">UTM Source</label>
+                <input
+                  type="text"
+                  placeholder="Ex: facebook"
+                  value={filters.utmSource}
+                  onChange={(e) => setFilters({ ...filters, utmSource: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">UTM Medium</label>
+                <input
+                  type="text"
+                  placeholder="Ex: cpc"
+                  value={filters.utmMedium}
+                  onChange={(e) => setFilters({ ...filters, utmMedium: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">UTM Campaign</label>
+                <input
+                  type="text"
+                  placeholder="Ex: black_friday"
+                  value={filters.utmCampaign}
+                  onChange={(e) => setFilters({ ...filters, utmCampaign: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">UTM Content</label>
+                <input
+                  type="text"
+                  placeholder="Ex: video_1"
+                  value={filters.utmContent}
+                  onChange={(e) => setFilters({ ...filters, utmContent: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">UTM Term</label>
+                <input
+                  type="text"
+                  placeholder="Ex: divorcio"
+                  value={filters.utmTerm}
+                  onChange={(e) => setFilters({ ...filters, utmTerm: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
+      <div className="bg-white rounded-lg shadow">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -484,20 +733,31 @@ export default function LeadsList() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="relative group">
-                    <button className={`px-2 py-1 text-xs font-medium rounded-full capitalize ${getStatusColor(lead.status)} flex items-center gap-1`}>
-                      {lead.status.replace('_', ' ')}
-                      <ChevronDown className="w-3 h-3" />
+                    <button 
+                      className={`px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1.5 border hover:opacity-80 transition-opacity`}
+                      style={{ 
+                        backgroundColor: `${getStageDisplay(lead.status).color}15`, 
+                        color: getStageDisplay(lead.status).color,
+                        borderColor: `${getStageDisplay(lead.status).color}30`
+                      }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getStageDisplay(lead.status).color }}></span>
+                      {getStageDisplay(lead.status).name}
+                      <ChevronDown className="w-3 h-3 ml-0.5" />
                     </button>
-                    <div className="absolute left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 hidden group-hover:block z-10">
-                      {['novo', 'triagem', 'qualificado', 'agendado', 'compareceu', 'proposta_enviada', 'ganho', 'perdido', 'maturacao'].map((status) => (
-                        <button
-                          key={status}
-                          onClick={() => updateLeadStatus(lead.id, status as LeadStatus)}
-                          className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 first:rounded-t-lg last:rounded-b-lg capitalize"
-                        >
-                          {status.replace('_', ' ')}
-                        </button>
-                      ))}
+                    <div className="absolute left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 hidden group-hover:block z-50">
+                      <div className="max-h-60 overflow-y-auto">
+                        {stages.map((stage) => (
+                          <button
+                            key={stage.id}
+                            onClick={() => updateLeadStatus(lead.id, stage.stage_key as LeadStatus)}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: stage.color }}></span>
+                            {stage.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -508,19 +768,45 @@ export default function LeadsList() {
                   {formatDate(lead.created_at)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  {!lead.owner_user_id && (
-                    <button
-                      onClick={() => assignToMe(lead.id)}
-                      className="text-blue-600 hover:text-blue-900"
+                  <div className="relative group">
+                    <button 
+                      className={`px-3 py-1.5 text-xs font-medium rounded-md flex items-center gap-1.5 transition-colors ${
+                        lead.owner_user_id 
+                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                          : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                      }`}
                     >
-                      Atribuir a mim
+                      {lead.owner_user_id 
+                        ? (users.find(u => u.id === lead.owner_user_id)?.full_name?.split(' ')[0] || 'Atribuído') 
+                        : 'Atribuir Lead'}
+                      <ChevronDown className="w-3 h-3 ml-0.5" />
                     </button>
-                  )}
+                    <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 hidden group-hover:block z-50">
+                      <div className="max-h-60 overflow-y-auto">
+                        <div className="px-3 py-2 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-100">
+                          Selecione o responsável
+                        </div>
+                        {users.map((user) => (
+                          <button
+                            key={user.id}
+                            onClick={() => assignLead(lead.id, user.id)}
+                            className={`w-full text-left px-4 py-2 text-sm flex flex-col hover:bg-gray-50 ${
+                              lead.owner_user_id === user.id ? 'bg-blue-50 text-blue-700' : 'text-gray-700'
+                            }`}
+                          >
+                            <span className="font-medium">{user.full_name || 'Usuário'}</span>
+                            <span className="text-xs opacity-70">{user.email}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
 
         {leads.length === 0 && (
           <div className="text-center py-12">

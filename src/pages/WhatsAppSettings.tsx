@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Smartphone, Plus, Power, PowerOff, RefreshCw, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -52,7 +52,7 @@ export default function WhatsAppSettings() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setInstances(data || []);
+      setInstances((data || []) as unknown as WhatsAppInstance[]);
     } catch (error) {
       console.error('Error loading instances:', error);
     } finally {

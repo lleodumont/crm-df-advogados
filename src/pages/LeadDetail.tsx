@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, ArrowLeft, BarChart3, CheckCircle, Tag as TagIcon, Plus, X, CreditCard as Edit, Save } from 'lucide-react';
+import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, BarChart3, CheckCircle, Tag as TagIcon, Plus, X, CreditCard as Edit, Save } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
+import { notify } from '../lib/toast';
 import WhatsAppChat from '../components/WhatsAppChat';
+import Breadcrumbs from '../components/Breadcrumbs';
+import CustomFieldsViewer from '../components/CustomFieldsViewer';
 
 type Lead = Database['public']['Tables']['leads']['Row'];
 type LeadAnswer = Database['public']['Tables']['lead_answers']['Row'];
@@ -18,6 +21,14 @@ interface Tag {
   color: string;
 }
 
+interface PipelineStage {
+  id: string;
+  name: string;
+  stage_key: string;
+  color: string;
+  order_index: number;
+}
+
 export default function LeadDetail() {
   const id = window.location.pathname.split('/')[2];
   const { profile } = useAuth();
@@ -30,6 +41,7 @@ export default function LeadDetail() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'timeline' | 'validation' | 'meetings' | 'proposals' | 'scheduled' | 'whatsapp'>('timeline');
   const [leadTags, setLeadTags] = useState<Tag[]>([]);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [showTagSelector, setShowTagSelector] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -52,8 +64,29 @@ export default function LeadDetail() {
   const [validationForm, setValidationForm] = useState({
     decisao_real: '',
     urgencia_real: '',
-    patrimonio_real: '',
+    conflito_real: '',
+    renda_real: '',
+    filhos_menores_real: '',
+    especialista_real: '',
+    estagio_real: '',
+    valor_bens_real: '',
+    decisor: '',
+    proximo_passo: '',
+    notas_triagem: '',
+    timeline_real: '',
   });
+
+  const getMetaAnswer = (key: string) => {
+    const sorted = [...answers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    let ans = null;
+    if (key === 'decisao') ans = sorted.find(a => ['decisao', 'stage'].includes(a.question_key));
+    else if (key === 'urgencia') ans = sorted.find(a => ['urgencia', 'urgency_now'].includes(a.question_key));
+    else if (key === 'bens') ans = sorted.find(a => ['bens', 'assets_range'].includes(a.question_key));
+    else if (key === 'renda') ans = sorted.find(a => ['renda', 'family_income_range'].includes(a.question_key));
+    else if (key === 'estagio') ans = sorted.find(a => ['estagio', 'estagio_juridico'].includes(a.question_key));
+    else ans = sorted.find(a => a.question_key === key);
+    return ans?.answer_value || undefined;
+  };
 
   const [newActivity, setNewActivity] = useState('');
   const [newMeeting, setNewMeeting] = useState({
@@ -83,7 +116,7 @@ export default function LeadDetail() {
   const loadLeadData = async () => {
     setLoading(true);
     try {
-      const [leadRes, answersRes, activitiesRes, meetingsRes, proposalsRes, scheduledRes, tagsRes, allTagsRes] = await Promise.all([
+      const [leadRes, answersRes, activitiesRes, meetingsRes, proposalsRes, scheduledRes, tagsRes, allTagsRes, stagesRes] = await Promise.all([
         supabase.from('leads').select('*').eq('id', id).maybeSingle(),
         supabase.from('lead_answers').select('*').eq('lead_id', id).order('created_at', { ascending: false }),
         supabase.from('activities').select('*').eq('lead_id', id).order('created_at', { ascending: false }),
@@ -92,6 +125,7 @@ export default function LeadDetail() {
         supabase.from('scheduled_activities').select('*').eq('lead_id', id).order('scheduled_at', { ascending: true }),
         supabase.from('lead_tags').select('tags(id, name, color)').eq('lead_id', id),
         supabase.from('tags').select('*').order('name'),
+        supabase.from('pipeline_stages').select('*').order('order_index', { ascending: true })
       ]);
 
       setLead(leadRes.data);
@@ -100,6 +134,7 @@ export default function LeadDetail() {
       setMeetings(meetingsRes.data || []);
       setProposals(proposalsRes.data || []);
       setScheduledActivities(scheduledRes.data || []);
+      setStages(stagesRes.data || []);
       setLeadTags(tagsRes.data?.map(lt => lt.tags as unknown as Tag).filter(Boolean) || []);
       setAvailableTags(allTagsRes.data || []);
 
@@ -154,10 +189,10 @@ export default function LeadDetail() {
 
       await loadLeadData();
       setIsEditing(false);
-      alert('Lead atualizado com sucesso!');
+      notify.success('Lead atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating lead:', error);
-      alert('Erro ao atualizar lead');
+      notify.error('Erro ao atualizar lead');
     }
   };
 
@@ -168,20 +203,51 @@ export default function LeadDetail() {
       const validationAnswers = [
         { lead_id: id, question_key: 'decisao_real', answer_value: validationForm.decisao_real, source: 'triagem_humana' as const },
         { lead_id: id, question_key: 'urgencia_real', answer_value: validationForm.urgencia_real, source: 'triagem_humana' as const },
-        { lead_id: id, question_key: 'patrimonio_real', answer_value: validationForm.patrimonio_real, source: 'triagem_humana' as const },
-      ];
+        { lead_id: id, question_key: 'conflito_real', answer_value: validationForm.conflito_real, source: 'triagem_humana' as const },
+        { lead_id: id, question_key: 'valor_bens_real', answer_value: validationForm.valor_bens_real, source: 'triagem_humana' as const },
+        { lead_id: id, question_key: 'renda_real', answer_value: validationForm.renda_real, source: 'triagem_humana' as const },
+        { lead_id: id, question_key: 'filhos_menores_real', answer_value: validationForm.filhos_menores_real, source: 'triagem_humana' as const },
+        { lead_id: id, question_key: 'especialista_real', answer_value: validationForm.especialista_real, source: 'triagem_humana' as const },
+        { lead_id: id, question_key: 'estagio_real', answer_value: validationForm.estagio_real, source: 'triagem_humana' as const },
+        { lead_id: id, question_key: 'proximo_passo', answer_value: validationForm.proximo_passo, source: 'triagem_humana' as const },
+        { lead_id: id, question_key: 'timeline_real', answer_value: validationForm.timeline_real, source: 'triagem_humana' as const },
+      ].filter(a => a.answer_value);
 
-      const { error } = await supabase.from('lead_answers').insert(validationAnswers);
-      if (error) throw error;
+      if (validationAnswers.length === 0 && !validationForm.notas_triagem) {
+        alert('Preencha pelo menos um campo antes de salvar.');
+        return;
+      }
+
+      if (validationAnswers.length > 0) {
+        const { error } = await supabase.from('lead_answers').insert(validationAnswers);
+        if (error) throw error;
+      }
+
+      // Log activity with validator's name, timestamp, and notes
+      const validatorName = profile?.full_name || profile?.email || 'Vendedor';
+      const timestamp = new Date().toLocaleString('pt-BR');
+      const notesText = validationForm.notas_triagem ? `\n\nNotas: ${validationForm.notas_triagem}` : '';
+      const proximoPassoText = validationForm.proximo_passo ? `\nPróximo Passo: ${validationForm.proximo_passo}` : '';
+      await supabase.from('activities').insert({
+        lead_id: id,
+        type: 'note',
+        channel: 'internal',
+        user_id: profile?.id,
+        content: `✅ Validação Humana registrada por ${validatorName} em ${timestamp}.${proximoPassoText}${notesText}`,
+      });
 
       await supabase.rpc('calculate_lead_score', { p_lead_id: id });
 
-      setValidationForm({ decisao_real: '', urgencia_real: '', patrimonio_real: '' });
+      setValidationForm({ 
+        decisao_real: '', urgencia_real: '', conflito_real: '', renda_real: '',
+        filhos_menores_real: '', especialista_real: '', estagio_real: '', valor_bens_real: '',
+        decisor: '', proximo_passo: '', notas_triagem: '', timeline_real: '' 
+      });
       loadLeadData();
-      alert('Validação salva com sucesso!');
+      notify.success('Validação salva com sucesso!');
     } catch (error) {
       console.error('Error saving validation:', error);
-      alert('Erro ao salvar validação');
+      notify.error('Erro ao salvar validação');
     }
   };
 
@@ -220,10 +286,10 @@ export default function LeadDetail() {
       if (error) throw error;
       setNewMeeting({ scheduled_at: '', notes: '' });
       loadLeadData();
-      alert('Reunião agendada com sucesso!');
+      notify.success('Reunião agendada com sucesso!');
     } catch (error) {
       console.error('Error creating meeting:', error);
-      alert('Erro ao agendar reunião');
+      notify.error('Erro ao agendar reunião');
     }
   };
 
@@ -240,6 +306,8 @@ export default function LeadDetail() {
 
       if (id && status === 'held') {
         await supabase.from('leads').update({ status: 'compareceu' }).eq('id', id);
+      } else if (id && status === 'no_show') {
+        await supabase.from('leads').update({ status: 'no_show' }).eq('id', id);
       }
 
       loadLeadData();
@@ -263,10 +331,10 @@ export default function LeadDetail() {
       if (error) throw error;
       setNewProposal({ presented_at: '', value: '', payment_terms: '' });
       loadLeadData();
-      alert('Proposta criada com sucesso!');
+      notify.success('Proposta criada com sucesso!');
     } catch (error) {
       console.error('Error creating proposal:', error);
-      alert('Erro ao criar proposta');
+      notify.error('Erro ao criar proposta');
     }
   };
 
@@ -296,16 +364,16 @@ export default function LeadDetail() {
         duration_minutes: '',
       });
       loadLeadData();
-      alert('Atividade agendada com sucesso!');
+      notify.success('Atividade agendada com sucesso!');
     } catch (error) {
       console.error('Error creating scheduled activity:', error);
-      alert('Erro ao agendar atividade');
+      notify.error('Erro ao agendar atividade');
     }
   };
 
   const updateScheduledActivityStatus = async (activityId: string, status: 'completed' | 'cancelled') => {
     try {
-      const updateData: any = { status };
+      const updateData: { status: 'completed' | 'cancelled'; completed_at?: string } = { status };
       if (status === 'completed') {
         updateData.completed_at = new Date().toISOString();
       }
@@ -319,16 +387,51 @@ export default function LeadDetail() {
     }
   };
 
-  const updateProposalStatus = async (proposalId: string, status: 'won' | 'lost', lossReason?: string) => {
+  const updateProposalStatus = async (proposalId: string, status: 'won' | 'lost', lossReason?: string, lossCategory?: string) => {
     try {
-      const { error } = await supabase
+      const updateData: { status: 'won' | 'lost'; loss_reason?: string; loss_reason_category?: string; closed_at?: string } = { 
+        status, 
+        loss_reason: lossReason,
+        loss_reason_category: lossCategory 
+      };
+      if (status === 'won') {
+        updateData.closed_at = new Date().toISOString();
+      }
+
+      const { error: updateError } = await supabase
         .from('proposals')
-        .update({ status, loss_reason: lossReason })
+        .update(updateData)
         .eq('id', proposalId);
 
-      if (error) throw error;
+      if (updateError) throw updateError;
+      
+      if (status === 'won' && id) {
+        // Fetch all won proposals to calculate total deal_value and earliest closed_at
+        const { data: wonProposals, error: fetchError } = await supabase
+          .from('proposals')
+          .select('*')
+          .eq('lead_id', id)
+          .eq('status', 'won');
+          
+        if (!fetchError && wonProposals && wonProposals.length > 0) {
+          const totalWonValue = wonProposals.reduce((sum, p) => sum + (p.value || 0), 0);
+          const earliestClosure = wonProposals
+            .map(p => p.closed_at)
+            .filter(Boolean)
+            .sort()[0] || new Date().toISOString();
+            
+          await supabase
+            .from('leads')
+            .update({ 
+               deal_value: totalWonValue,
+               closed_at: earliestClosure
+             })
+            .eq('id', id);
+        }
+      }
+
       loadLeadData();
-      alert(status === 'won' ? 'Proposta ganha!' : 'Proposta perdida registrada.');
+      notify.success(status === 'won' ? 'Proposta ganha!' : 'Proposta perdida registrada.');
     } catch (error) {
       console.error('Error updating proposal:', error);
     }
@@ -445,6 +548,11 @@ export default function LeadDetail() {
     return labels[range] || range;
   };
 
+  const getStageDisplay = (statusKey: string) => {
+    const stage = stages.find(s => s.stage_key === statusKey);
+    return stage ? { name: stage.name, color: stage.color } : { name: statusKey.replace('_', ' '), color: '#6B7280' };
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -468,13 +576,15 @@ export default function LeadDetail() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: 'Leads', href: '/leads' },
+          { label: lead?.full_name || 'Lead' },
+        ]}
+      />
+
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <a href="/leads" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <ArrowLeft className="w-6 h-6" />
-          </a>
-          <h1 className="text-3xl font-bold text-gray-900">{lead.full_name}</h1>
-        </div>
+        <h1 className="text-3xl font-bold text-gray-900">{lead.full_name}</h1>
         <button
           onClick={() => setIsEditing(true)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -546,11 +656,11 @@ export default function LeadDetail() {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option value="">Selecione...</option>
-                      <option value="0-3k">Até R$ 3.000</option>
-                      <option value="3k-5k">R$ 3.000 - R$ 5.000</option>
-                      <option value="5k-10k">R$ 5.000 - R$ 10.000</option>
-                      <option value="10k-20k">R$ 10.000 - R$ 20.000</option>
-                      <option value="20k+">Acima de R$ 20.000</option>
+                      <option value="ate_10k">Até R$ 10.000</option>
+                      <option value="10k_25k">R$ 10.000 - R$ 25.000</option>
+                      <option value="25k_50k">R$ 25.000 - R$ 50.000</option>
+                      <option value="acima_50k">Acima de R$ 50.000</option>
+                      <option value="prefiro_nao_informar">Prefiro não informar</option>
                     </select>
                   </div>
                 </div>
@@ -569,14 +679,10 @@ export default function LeadDetail() {
                       onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      <option value="new">Novo</option>
-                      <option value="contacted">Contatado</option>
-                      <option value="qualified">Qualificado</option>
-                      <option value="meeting_scheduled">Reunião Agendada</option>
-                      <option value="proposal_sent">Proposta Enviada</option>
-                      <option value="negotiation">Negociação</option>
-                      <option value="won">Ganho</option>
-                      <option value="lost">Perdido</option>
+                      <option value="">Selecione o status</option>
+                      {stages.map(stage => (
+                        <option key={stage.id} value={stage.stage_key}>{stage.name}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -588,9 +694,9 @@ export default function LeadDetail() {
                       onChange={(e) => setEditForm({ ...editForm, classification: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      <option value="hot">Quente</option>
-                      <option value="warm">Morno</option>
-                      <option value="cold">Frio</option>
+                      <option value="morno">Morno</option>
+                      <option value="qualificado">Qualificado</option>
+                      <option value="estrategico">Estratégico</option>
                     </select>
                   </div>
                 </div>
@@ -725,12 +831,27 @@ export default function LeadDetail() {
           </div>
           <div>
             <div className="text-sm text-gray-600 mb-1">Status</div>
-            <span className="text-lg font-medium text-gray-900 capitalize">{lead.status.replace('_', ' ')}</span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getStageDisplay(lead.status).color }}></span>
+              <span className="text-lg font-medium text-gray-900 capitalize" style={{ color: getStageDisplay(lead.status).color }}>
+                {getStageDisplay(lead.status).name}
+              </span>
+            </div>
           </div>
           <div>
             <div className="text-sm text-gray-600 mb-1">Origem</div>
             <span className="text-lg font-medium text-gray-900">{lead.source}</span>
             {lead.campaign && <div className="text-xs text-gray-500">{lead.campaign}</div>}
+          </div>
+          <div className="flex flex-col items-end">
+            <div className="text-sm text-gray-600 mb-1">Lead Score</div>
+            <div className={`text-2xl font-bold px-4 py-1 rounded-xl shadow-sm border ${
+              lead.score_total >= 70 ? 'bg-green-50 text-green-700 border-green-200' :
+              lead.score_total >= 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
+              'bg-gray-50 text-gray-700 border-gray-200'
+            }`}>
+              {lead.score_total}
+            </div>
           </div>
         </div>
 
@@ -806,8 +927,8 @@ export default function LeadDetail() {
                     <button
                       key={tag.id}
                       onClick={() => addTag(tag.id)}
-                      className="px-3 py-1 rounded-full text-sm font-medium hover:ring-2 ring-offset-1 transition-all"
-                      style={{ backgroundColor: tag.color, color: 'white', ringColor: tag.color }}
+                      className="px-3 py-1 rounded-full text-sm font-medium hover:opacity-80 transition-all"
+                      style={{ backgroundColor: tag.color, color: 'white' }}
                     >
                       {tag.name}
                     </button>
@@ -885,10 +1006,10 @@ export default function LeadDetail() {
               <div className="text-gray-500 mb-1">ID do Lead</div>
               <div className="font-mono text-gray-700 break-all">{lead.id}</div>
             </div>
-            {lead.assigned_to && (
+            {lead.owner_user_id && (
               <div>
-                <div className="text-gray-500 mb-1">Atribuído a</div>
-                <div className="font-mono text-gray-700 break-all">{lead.assigned_to}</div>
+                <div className="text-gray-500 mb-1">Responsável (ID)</div>
+                <div className="font-mono text-gray-700 break-all">{lead.owner_user_id}</div>
               </div>
             )}
             <div>
@@ -896,8 +1017,8 @@ export default function LeadDetail() {
               <div className="text-gray-700">{formatDateTime(lead.created_at)}</div>
             </div>
             <div>
-              <div className="text-gray-500 mb-1">Última Atualização</div>
-              <div className="text-gray-700">{formatDateTime(lead.updated_at)}</div>
+              <div className="text-gray-500 mb-1">Criado em</div>
+              <div className="text-gray-700">{formatDateTime(lead.created_at)}</div>
             </div>
           </div>
         </div>
@@ -1047,25 +1168,86 @@ export default function LeadDetail() {
                 </div>
 
                 {/* Respostas do Formulário */}
-                {answers.some(a => !a.question_key.startsWith('utm_') && !a.question_key.includes('_id')) && (
-                  <div className="mb-6">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Respostas do Formulário</h4>
-                    <div className="space-y-3">
-                      {answers
-                        .filter(a => !a.question_key.startsWith('utm_') && !a.question_key.includes('_id'))
-                        .map((answer) => (
-                          <div key={answer.id} className="bg-white border border-gray-200 rounded-lg p-3">
-                            <div className="flex justify-between items-start mb-1">
-                              <span className="text-sm font-medium text-gray-700">{formatQuestionKey(answer.question_key)}</span>
-                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">{answer.source}</span>
-                            </div>
-                            <div className="text-sm text-gray-900 font-medium">{formatAnswerValue(answer.answer_value)}</div>
-                            <div className="text-xs text-gray-400 mt-1">{formatDateTime(answer.created_at)}</div>
+                <div className="mb-6">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Respostas do Formulário</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
+                    {[
+                      { label: 'Decisão', keys: ['decisao', 'stage'] },
+                      { label: 'Urgência', keys: ['urgencia', 'urgency_now'] },
+                      { label: 'Relacionamento', keys: ['relacionamento'] },
+                      { label: 'Patrimônio', keys: ['bens', 'assets_range'] },
+                      { label: 'Renda Familiar', keys: ['renda', 'family_income_range'] },
+                      { label: 'Filhos Menores', keys: ['filhos'] },
+                      { label: 'Estágio Jurídico', keys: ['estagio', 'estagio_juridico'] },
+                    ].map(field => {
+                      let val = null;
+                      if (field.label === 'Filhos Menores') {
+                        const ans = answers.find(a => field.keys.includes(a.question_key));
+                        val = ans?.answer_value || undefined;
+                      } else {
+                        for (const key of field.keys) {
+                          const ans = answers.find(a => a.question_key === key);
+                          if (ans?.answer_value) {
+                            val = ans.answer_value;
+                            break;
+                          }
+                        }
+                      }
+                      
+                      return (
+                        <div key={field.label} className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{field.label}</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded font-medium">formulário</span>
                           </div>
-                        ))}
-                    </div>
+                          <div className="text-sm text-gray-900 font-medium mt-1">{val || 'Não informado'}</div>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
+
+                {/* Validação Humana */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Validação Humana</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-indigo-50/50 rounded-lg p-4 border border-indigo-100/50">
+                    {[
+                      { label: 'Decisão', keys: ['decisao_real'] },
+                      { label: 'Urgência', keys: ['urgencia_real'] },
+                      { label: 'Relacionamento', keys: ['conflito_real'] },
+                      { label: 'Patrimônio', keys: ['valor_bens_real'] },
+                      { label: 'Renda Familiar', keys: ['renda_real'] },
+                      { label: 'Filhos Menores', keys: ['filhos_menores_real'] },
+                      { label: 'Estágio Jurídico', keys: ['estagio_real'] },
+                    ].map(field => {
+                      let val = null;
+                      for (const key of field.keys) {
+                        // Get latest by sorting descending
+                        const ans = [...answers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).find(a => a.question_key === key);
+                        if (ans?.answer_value) {
+                          val = ans.answer_value;
+                          break;
+                        }
+                      }
+                      
+                      return (
+                        <div key={field.label} className="bg-white border border-indigo-100 rounded-lg p-3 shadow-sm">
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{field.label}</span>
+                            <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded font-medium">triagem SDR</span>
+                          </div>
+                          <div className="text-sm text-gray-900 font-medium mt-1">{val || 'Ainda não validado'}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Campos Personalizados Dinâmicos */}
+                <div className="mb-6">
+                  <CustomFieldsViewer leadId={lead.id} />
+                </div>
+
 
                 {/* UTM Tracking - Sempre visível com todos os campos */}
                 <div className="mb-6">
@@ -1119,7 +1301,9 @@ export default function LeadDetail() {
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Histórico de Atividades</h3>
                 <div className="space-y-4">
-                  {activities.map((activity) => (
+                  {activities
+                    .filter(a => !['msg_sent', 'msg_received'].includes(a.type))
+                    .map((activity) => (
                     <div key={activity.id} className="flex gap-4">
                       <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                         <MessageSquare className="w-5 h-5 text-blue-600" />
@@ -1132,11 +1316,11 @@ export default function LeadDetail() {
                           )}
                           <span className="text-xs text-gray-400">{formatDateTime(activity.created_at)}</span>
                         </div>
-                        <div className="text-sm text-gray-700">{activity.content}</div>
+                        <div className="text-sm text-gray-700 whitespace-pre-wrap">{activity.content}</div>
                       </div>
                     </div>
                   ))}
-                  {activities.length === 0 && (
+                  {activities.filter(a => !['msg_sent', 'msg_received'].includes(a.type)).length === 0 && (
                     <div className="text-sm text-gray-500">Nenhuma atividade registrada</div>
                   )}
                 </div>
@@ -1152,59 +1336,198 @@ export default function LeadDetail() {
                   Use esta seção para validar as informações do lead e recalcular o score com base em dados reais.
                 </p>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Decisão Real
-                    </label>
-                    <select
-                      value={validationForm.decisao_real}
-                      onChange={(e) => setValidationForm({ ...validationForm, decisao_real: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="tomada">Decisão tomada</option>
-                      <option value="possibilidade_reconciliar">Possibilidade de reconciliar</option>
-                      <option value="apenas_avaliando">Apenas avaliando</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Urgência Real
-                    </label>
-                    <input
-                      type="text"
-                      value={validationForm.urgencia_real}
-                      onChange={(e) => setValidationForm({ ...validationForm, urgencia_real: e.target.value })}
-                      placeholder="Descreva a situação atual..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Patrimônio Real
-                    </label>
-                    <select
-                      value={validationForm.patrimonio_real}
-                      onChange={(e) => setValidationForm({ ...validationForm, patrimonio_real: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="simples">Simples (sem bens complexos)</option>
-                      <option value="empresa_imovel">Empresa ou imóvel financiado</option>
-                      <option value="muito_complexo">Muito complexo (múltiplos ativos)</option>
-                    </select>
-                  </div>
-
-                  <button
-                    onClick={saveValidation}
-                    className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                  >
-                    Salvar Validação e Recalcular Score
-                  </button>
+                {/* Formulário de Validação Humana (Interactive) */}
+                <div className="rounded-[1.5rem] border border-gray-200 overflow-hidden shadow-sm bg-white mb-6">
+                  <table className="w-full border-collapse text-left">
+                    <thead>
+                      <tr className="bg-gray-50/80 border-b border-gray-200">
+                        <th className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest w-1/4">Campo</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-amber-600/70 uppercase tracking-widest w-1/3">Declaração (Lead)</th>
+                        <th className="px-6 py-4 text-[10px] font-black text-indigo-600 uppercase tracking-widest w-1/3">Validação (Você)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {/* Decisão */}
+                      <tr>
+                        <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Decisão</td>
+                        <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('decisao') || 'Não informado'}</td>
+                        <td className="px-6 py-4">
+                          <select 
+                            className="w-full px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-200 outline-none"
+                            value={validationForm.decisao_real}
+                            onChange={e => setValidationForm({...validationForm, decisao_real: e.target.value})}
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="decidi_estruturar">Sim, já estou decidido(a)</option>
+                            <option value="quase_decidido">Estou muito inclinado(a), mas ainda avaliando</option>
+                            <option value="avaliando">Ainda estou pensando</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {/* Urgência */}
+                      <tr>
+                        <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Urgência</td>
+                        <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('urgencia') || 'Não informado'}</td>
+                        <td className="px-6 py-4">
+                          <select 
+                            className="w-full px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-200 outline-none"
+                            value={validationForm.urgencia_real}
+                            onChange={e => setValidationForm({...validationForm, urgencia_real: e.target.value})}
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="alta">Preciso resolver isso imediatamente</option>
+                            <option value="media">Quero resolver nos próximos meses</option>
+                            <option value="baixa">Ainda estou apenas buscando informações</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {/* Relacionamento (Conflito) */}
+                      <tr>
+                        <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Relacionamento</td>
+                        <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('relacionamento') || 'Não informado'}</td>
+                        <td className="px-6 py-4">
+                          <select 
+                            className="w-full px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-200 outline-none"
+                            value={validationForm.conflito_real}
+                            onChange={e => setValidationForm({...validationForm, conflito_real: e.target.value})}
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Concordamos em tudo (Amigável)">Concordamos em tudo (Amigável)</option>
+                            <option value="Temos algumas divergências">Temos algumas divergências</option>
+                            <option value="Há muito conflito/brigas (Litigioso)">Há muito conflito/brigas (Litigioso)</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {/* Patrimônio */}
+                      <tr>
+                        <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Patrimônio</td>
+                        <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('bens') || 'Não informado'}</td>
+                        <td className="px-6 py-4">
+                          <select 
+                            className="w-full px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-200 outline-none"
+                            value={validationForm.valor_bens_real}
+                            onChange={e => setValidationForm({...validationForm, valor_bens_real: e.target.value})}
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Sim, bens acima de R$1 milhão">Sim, bens acima de R$1 milhão</option>
+                            <option value="Sim, bens entre R$500 mil e R$1 milhão">Sim, bens entre R$500 mil e R$1 milhão</option>
+                            <option value="Sim, bens entre R$100 mil e R$500 mil">Sim, bens entre R$100 mil e R$500 mil</option>
+                            <option value="Sim, bens de até R$100 mil">Sim, bens de até R$100 mil</option>
+                            <option value="Não há bens">Não há bens</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {/* Renda Familiar */}
+                      <tr>
+                        <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Renda Familiar</td>
+                        <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('renda') || 'Não informado'}</td>
+                        <td className="px-6 py-4">
+                          <select 
+                            className="w-full px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-200 outline-none"
+                            value={validationForm.renda_real}
+                            onChange={e => setValidationForm({...validationForm, renda_real: e.target.value})}
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Acima de R$40 mil">Acima de R$40 mil</option>
+                            <option value="Entre R$20 mil e R$40 mil">Entre R$20 mil e R$40 mil</option>
+                            <option value="Entre R$10 mil e R$20 mil">Entre R$10 mil e R$20 mil</option>
+                            <option value="Entre R$5 mil e R$10 mil">Entre R$5 mil e R$10 mil</option>
+                            <option value="Até R$5 mil">Até R$5 mil</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {/* Filhos Menores */}
+                      <tr>
+                        <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Filhos Menores</td>
+                        <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('filhos') || 'Não informado'}</td>
+                        <td className="px-6 py-4">
+                          <select 
+                            className="w-full px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-200 outline-none"
+                            value={validationForm.filhos_menores_real}
+                            onChange={e => setValidationForm({...validationForm, filhos_menores_real: e.target.value})}
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Sim">Sim</option>
+                            <option value="Não">Não</option>
+                          </select>
+                        </td>
+                      </tr>
+                      {/* Estágio Jurídico */}
+                      <tr>
+                        <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Estágio Jurídico</td>
+                        <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('estagio') || 'Não informado'}</td>
+                        <td className="px-6 py-4">
+                          <select 
+                            className="w-full px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-200 outline-none"
+                            value={validationForm.estagio_real}
+                            onChange={e => setValidationForm({...validationForm, estagio_real: e.target.value})}
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="Não há processo ainda">Não há processo ainda</option>
+                            <option value="Já foi citado(a) - Prazo correndo">Já foi citado(a) - Prazo correndo</option>
+                            <option value="Já existe processo em andamento">Já existe processo em andamento</option>
+                            <option value="Apenas quer trocar de advogado">Apenas quer trocar de advogado</option>
+                          </select>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Próximo Passo Estratégico</label>
+                    <select 
+                      className="w-full px-5 py-4 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 bg-gray-50 focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all outline-none"
+                      value={validationForm.proximo_passo}
+                      onChange={e => setValidationForm({...validationForm, proximo_passo: e.target.value})}
+                    >
+                      <option value="">Selecione o melhor caminho...</option>
+                      <option value="agendar_reuniao">🗓️ Agendar Reunião Imediata</option>
+                      <option value="enviar_proposta">📨 Enviar Proposta de Honorários</option>
+                      <option value="aguardar_documentos">📂 Aguardar Envio de Documentos</option>
+                      <option value="nutricao_ativa">🔄 Manter em Nutrição / Follow-up</option>
+                      <option value="descartar">❌ Descartar Lead</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Prazos e Expectativa</label>
+                    <select 
+                      className="w-full px-5 py-4 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 bg-gray-50 focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all outline-none"
+                      value={validationForm.timeline_real}
+                      onChange={e => setValidationForm({...validationForm, timeline_real: e.target.value})}
+                    >
+                      <option value="">Prazo real para fechar...</option>
+                      <option value="imediato">🔥 Imediato (menos de 7 dias)</option>
+                      <option value="curto">📅 Curto Prazo (7-30 dias)</option>
+                      <option value="medio">🗓️ Médio Prazo (1-3 meses)</option>
+                      <option value="longo">⏳ Longo Prazo (+3 meses)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Notas livres da triagem */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    📝 Notas da Triagem
+                    <span className="text-xs font-normal text-gray-500 ml-2">Capture o que os dropdowns não capturam</span>
+                  </label>
+                  <textarea
+                    value={validationForm.notas_triagem}
+                    onChange={(e) => setValidationForm({ ...validationForm, notas_triagem: e.target.value })}
+                    placeholder="Ex: Marido está escondendo empresa no nome do filho. Lead tem pressa mas não sabe o valor dos bens..."
+                    rows={3}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                  />
+                </div>
+
+                <button
+                  onClick={saveValidation}
+                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Salvar Validação e Recalcular Score
+                </button>
               </div>
             </div>
           )}
@@ -1391,8 +1714,15 @@ export default function LeadDetail() {
                           </button>
                           <button
                             onClick={() => {
-                              const reason = prompt('Motivo da perda:');
-                              if (reason) updateProposalStatus(proposal.id, 'lost', reason);
+                              const reason = prompt('Explique o motivo da perda (opcional):');
+                              const categories = ['preco', 'concorrente', 'reconciliacao', 'timing', 'outro'];
+                              const category = prompt(`Escolha a categoria:\n${categories.join(', ')}`);
+                              
+                              if (category && categories.includes(category.toLowerCase())) {
+                                updateProposalStatus(proposal.id, 'lost', reason || undefined, category.toLowerCase());
+                              } else {
+                                notify.error('Categoria inválida. Use: preco, concorrente, reconciliacao, timing ou outro');
+                              }
                             }}
                             className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
                           >
@@ -1422,7 +1752,7 @@ export default function LeadDetail() {
                       </label>
                       <select
                         value={newScheduledActivity.activity_type}
-                        onChange={(e) => setNewScheduledActivity({ ...newScheduledActivity, activity_type: e.target.value as any })}
+                        onChange={(e) => setNewScheduledActivity({ ...newScheduledActivity, activity_type: e.target.value as 'call' | 'email' | 'follow_up' | 'task' | 'meeting' })}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="call">Ligação</option>
@@ -1438,7 +1768,7 @@ export default function LeadDetail() {
                       </label>
                       <select
                         value={newScheduledActivity.priority}
-                        onChange={(e) => setNewScheduledActivity({ ...newScheduledActivity, priority: e.target.value as any })}
+                        onChange={(e) => setNewScheduledActivity({ ...newScheduledActivity, priority: e.target.value as 'low' | 'medium' | 'high' | 'urgent' })}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="low">Baixa</option>

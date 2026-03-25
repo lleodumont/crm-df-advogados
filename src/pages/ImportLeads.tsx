@@ -319,7 +319,7 @@ export default function ImportLeads() {
           <li><strong>Pilar Fit (0-5 pontos):</strong> Alinhamento com a oferta</li>
         </ul>
         <p className="text-sm text-blue-800 mt-4">
-          <strong>Classificação:</strong> 0-39 = Morno | 40-69 = Qualificado | 70-100 = Qualificado de alto valor
+          <strong>Classificação:</strong> 0-39 = Morno | 40-69 = Qualificado | 70-100 = Super qualificado
         </p>
       </div>
     </div>

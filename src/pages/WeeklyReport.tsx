@@ -13,8 +13,12 @@ export default function WeeklyReport() {
     const start = new Date();
     start.setDate(end.getDate() - 7);
 
-    setStartDate(start.toISOString().split('T')[0]);
-    setEndDate(end.toISOString().split('T')[0]);
+    const getLocalDateString = (date: Date) => {
+      return new Intl.DateTimeFormat('sv-SE').format(date);
+    };
+
+    setStartDate(getLocalDateString(start));
+    setEndDate(getLocalDateString(end));
   }, []);
 
   useEffect(() => {
@@ -26,69 +30,94 @@ export default function WeeklyReport() {
   const generateReport = async () => {
     setLoading(true);
     try {
-      const { data: leads } = await supabase
-        .from('leads')
-        .select('*')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59');
+      // Calculate start and end of week in ISO format for Supabase queries
+      const startOfWeek = new Date(startDate);
+      startOfWeek.setHours(0, 0, 0, 0);
+      const startOfWeekISO = startOfWeek.toISOString();
 
-      const { data: meetings } = await supabase
-        .from('meetings')
-        .select('*')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59');
+      const endOfWeek = new Date(endDate);
+      endOfWeek.setHours(23, 59, 59, 999);
+      const endOfWeekISO = endOfWeek.toISOString();
 
-      const { data: proposals } = await supabase
-        .from('proposals')
-        .select('*')
-        .gte('created_at', startDate)
-        .lte('created_at', endDate + 'T23:59:59');
+      const { data: leads } = await (supabase.from('leads').select('*') as any);
+      const { data: meetingsRaw } = await (supabase.from('meetings').select('*').gte('scheduled_at', startOfWeekISO).lte('scheduled_at', endOfWeekISO) as any);
+      const { data: scheduledMeetingsRaw } = await (supabase.from('scheduled_activities').select('*').eq('activity_type', 'meeting').gte('scheduled_at', startOfWeekISO).lte('scheduled_at', endOfWeekISO) as any);
+      const meetings = [
+        ...(meetingsRaw || []),
+        ...(scheduledMeetingsRaw || []).map((a: any) => ({
+          ...a,
+          status: a.status === 'completed' ? 'held' : a.status === 'cancelled' ? 'canceled' : a.status,
+        })),
+      ];
+      const { data: proposals } = await (supabase.from('proposals').select('*').gte('presented_at', startOfWeekISO).lte('presented_at', endOfWeekISO) as any);
+      const { data: ganhos } = await (supabase.from('leads').select('*').eq('status', 'ganho').gte('closed_at', startOfWeekISO).lte('closed_at', endOfWeekISO) as any);
 
-      const totalLeads = leads?.length || 0;
-      const qualificados = leads?.filter(l => l.classification === 'qualificado').length || 0;
-      const estrategicos = leads?.filter(l => l.classification === 'estrategico').length || 0;
+      const totalLeads = leads?.filter((l: any) => l.created_at >= startOfWeekISO && l.created_at <= endOfWeekISO).length || 0;
+      
+      const qualificadosQuery = leads?.filter((l: any) => 
+        l.created_at >= startOfWeekISO && 
+        l.created_at <= endOfWeekISO && 
+        (l.classification === 'qualificado' || !['novo', 'triagem'].includes(l.status))
+      ) || [];
+      const qualificados = qualificadosQuery.length;
+      
+      const estrategicos = leads?.filter((l: any) => 
+        l.created_at >= startOfWeekISO && 
+        l.created_at <= endOfWeekISO && 
+        l.classification === 'estrategico'
+      ).length || 0;
 
-      const agendados = meetings?.filter(m => m.status !== 'canceled').length || 0;
-      const realizadas = meetings?.filter(m => m.status === 'held').length || 0;
-      const noShow = meetings?.filter(m => m.status === 'no_show').length || 0;
+      const agendados = meetings?.length || 0;
+      const realizadas = meetings?.filter((m: any) => m.status === 'held').length || 0;
+      const noShow = meetings?.filter((m: any) => m.status === 'no_show').length || 0;
 
       const propostas = proposals?.length || 0;
-      const ganhos = proposals?.filter(p => p.status === 'won').length || 0;
-      const perdidos = proposals?.filter(p => p.status === 'lost').length || 0;
+      const totalGanhos = ganhos?.length || 0;
+      const perdidos = proposals?.filter((p: any) => p.status === 'lost').length || 0;
 
-      const receita = proposals?.filter(p => p.status === 'won').reduce((sum, p) => sum + p.value, 0) || 0;
-      const ticketMedio = ganhos > 0 ? receita / ganhos : 0;
+      const receita = proposals?.filter((p: any) => p.status === 'won').reduce((sum: number, p: any) => sum + (p.value || 0), 0) || 0;
+      const ticketMedio = totalGanhos > 0 ? receita / totalGanhos : 0;
 
-      const conversaoLeadToMeeting = totalLeads > 0 ? (agendados / totalLeads) * 100 : 0;
+      const conversaoLeadToMeeting = (qualificados + estrategicos) > 0 ? (agendados / (qualificados + estrategicos)) * 100 : 0;
       const conversaoMeetingToProposal = realizadas > 0 ? (propostas / realizadas) * 100 : 0;
-      const conversaoProposalToWon = propostas > 0 ? (ganhos / propostas) * 100 : 0;
+      const conversaoProposalToWon = propostas > 0 ? (totalGanhos / propostas) * 100 : 0;
+
+      // Buscar leads parados via view
+      const { data: staleLeads } = await supabase.from('vw_stale_strategic_leads').select('*').limit(5);
 
       const gargalo =
-        conversaoLeadToMeeting < 20 ? 'Lead → Agendamento' :
-        conversaoMeetingToProposal < 50 ? 'Reunião → Proposta' :
-        conversaoProposalToWon < 30 ? 'Proposta → Fechamento' :
+        conversaoLeadToMeeting < 20 ? 'Lead → Agendamento (Baixa conversão na triagem)' :
+        conversaoMeetingToProposal < 50 ? 'Reunião → Proposta (Gargalo na apresentação de valor)' :
+        conversaoProposalToWon < 30 ? 'Proposta → Fechamento (Dificuldade no fechamento/negociação)' :
+        (staleLeads && staleLeads.length > 0) ? 'Velocidade (Leads estratégicos sem contato > 24h)' :
         'Nenhum gargalo crítico';
 
       const acoes = [];
+      
+      // Lógica Dinâmica baseada em Leads Parados
+      if (staleLeads && staleLeads.length > 0) {
+        acoes.push(`Retomar contato imediato com ${staleLeads.length} leads estratégicos parados há mais de 24h`);
+      }
+
+      // Lógica baseada em Taxas
       if (conversaoLeadToMeeting < 20) {
-        acoes.push('Melhorar triagem e qualificação de leads antes do agendamento');
+        acoes.push('Revisar script de triagem: leads não estão vendo valor no agendamento');
       }
       if (noShow > agendados * 0.3) {
-        acoes.push('Implementar confirmação de reuniões 24h antes para reduzir no-show');
+        acoes.push('Ativar lembretes automáticos: show rate está abaixo do benchmark (70%)');
       }
-      if (conversaoProposalToWon < 30) {
-        acoes.push('Revisar precificação e estrutura de propostas com a equipe comercial');
+      if (conversaoProposalToWon < 30 && perdidos > 0) {
+        acoes.push('Analisar motivos de perda: taxa de fechamento de propostas está baixa');
       }
-      if (estrategicos > 0 && ganhos === 0) {
-        acoes.push('Priorizar atendimento aos leads qualificados de alto valor com score alto');
+      
+      // Lógica de Priorização
+      if (estrategicos > 0 && agendados < estrategicos * 0.5) {
+        acoes.push('Foco Total: Menos de 50% dos leads estratégicos possuem reunião agendada');
       }
-      if (totalLeads > 0 && agendados === 0) {
-        acoes.push('Acelerar processo de triagem e agendamento de leads');
-      }
+
       if (acoes.length === 0) {
-        acoes.push('Manter o ritmo atual e continuar acompanhando métricas');
-        acoes.push('Investir em captação de leads qualificados');
-        acoes.push('Documentar processos que estão funcionando bem');
+        acoes.push('Manter cadência: processo está saudável e dentro dos benchmarks');
+        acoes.push('Explorar novos canais: capacidade ociosa detectada no funil');
       }
 
       setReportData({
@@ -99,7 +128,7 @@ export default function WeeklyReport() {
         realizadas,
         noShow,
         propostas,
-        ganhos,
+        ganhos: totalGanhos,
         perdidos,
         receita,
         ticketMedio,
@@ -108,6 +137,7 @@ export default function WeeklyReport() {
         conversaoProposalToWon,
         gargalo,
         acoes: acoes.slice(0, 3),
+        staleLeadsCount: staleLeads?.length || 0
       });
     } catch (error) {
       console.error('Error generating report:', error);
@@ -159,7 +189,7 @@ export default function WeeklyReport() {
             No período de {new Date(startDate).toLocaleDateString('pt-BR')} a {new Date(endDate).toLocaleDateString('pt-BR')},
             recebemos <strong>{reportData.totalLeads} leads</strong>, sendo{' '}
             <strong>{reportData.qualificados} qualificados</strong> e{' '}
-            <strong>{reportData.estrategicos} qualificados de alto valor</strong>.
+            <strong>{reportData.estrategicos} super qualificados</strong>.
           </p>
 
           <h3 className="text-lg font-semibold text-gray-900 mb-3">Reuniões</h3>

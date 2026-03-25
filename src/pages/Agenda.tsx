@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Calendar, Clock, MapPin, Phone, Mail, User, Plus, X, CheckCircle, AlertCircle, Circle, List, ChevronLeft, ChevronRight, Edit, Eye } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import ActivityModal from '../components/ActivityModal';
 
 type ActivityType = 'meeting' | 'call' | 'task' | 'email' | 'follow_up';
 type ActivityStatus = 'scheduled' | 'completed' | 'cancelled' | 'overdue';
@@ -32,6 +33,7 @@ interface ScheduledActivity {
 
 interface NewActivity {
   lead_id: string;
+  user_id: string;
   activity_type: ActivityType;
   title: string;
   description: string;
@@ -46,30 +48,30 @@ export default function Agenda() {
   const [activities, setActivities] = useState<ScheduledActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNewActivityModal, setShowNewActivityModal] = useState(false);
-  const [leads, setLeads] = useState<Array<{ id: string; full_name: string }>>([]);
+  const [leads, setLeads] = useState<Array<{ id: string; full_name: string | null }>>([]);
   const [filterStatus, setFilterStatus] = useState<'all' | ActivityStatus>('all');
   const [filterType, setFilterType] = useState<'all' | ActivityType>('all');
+  const [filterUser, setFilterUser] = useState<string>('all');
+  const [users, setUsers] = useState<Array<{ id: string; full_name: string | null }>>([]);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedActivity, setSelectedActivity] = useState<ScheduledActivity | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ScheduledActivity>>({});
 
-  const [newActivity, setNewActivity] = useState<NewActivity>({
-    lead_id: '',
-    activity_type: 'meeting',
-    title: '',
-    description: '',
-    scheduled_at: '',
-    priority: 'medium',
-    location: '',
-    duration_minutes: '30',
-  });
-
   useEffect(() => {
     fetchActivities();
     fetchLeads();
-  }, [filterStatus, filterType]);
+    fetchUsers();
+  }, [filterStatus, filterType, filterUser]);
+
+  const fetchUsers = async () => {
+    const { data } = await supabase
+      .from('user_profiles')
+      .select('id, full_name')
+      .order('full_name');
+    if (data) setUsers(data);
+  };
 
   const fetchLeads = async () => {
     const { data } = await supabase
@@ -99,54 +101,24 @@ export default function Agenda() {
       query = query.eq('activity_type', filterType);
     }
 
+    if (filterUser !== 'all') {
+      query = query.eq('user_id', filterUser);
+    }
+
     const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching activities:', error);
     } else {
-      setActivities(data || []);
+      setActivities((data || []) as ScheduledActivity[]);
     }
 
     setLoading(false);
   };
 
-  const handleCreateActivity = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!user) return;
-
-    const activityData = {
-      ...newActivity,
-      user_id: user.id,
-      duration_minutes: parseInt(newActivity.duration_minutes) || null,
-    };
-
-    const { error } = await supabase
-      .from('scheduled_activities')
-      .insert([activityData]);
-
-    if (error) {
-      console.error('Error creating activity:', error);
-      alert('Erro ao criar atividade');
-    } else {
-      setShowNewActivityModal(false);
-      setNewActivity({
-        lead_id: '',
-        activity_type: 'meeting',
-        title: '',
-        description: '',
-        scheduled_at: '',
-        priority: 'medium',
-        location: '',
-        duration_minutes: '30',
-      });
-      fetchActivities();
-    }
-  };
-
   const handleCompleteActivity = async (activityId: string) => {
-    const { error } = await supabase
-      .from('scheduled_activities')
+    const { error } = await (supabase
+      .from('scheduled_activities') as any)
       .update({
         status: 'completed',
         completed_at: new Date().toISOString(),
@@ -161,8 +133,8 @@ export default function Agenda() {
   };
 
   const handleCancelActivity = async (activityId: string) => {
-    const { error } = await supabase
-      .from('scheduled_activities')
+    const { error } = await (supabase
+      .from('scheduled_activities') as any)
       .update({ status: 'cancelled' })
       .eq('id', activityId);
 
@@ -183,6 +155,7 @@ export default function Agenda() {
       priority: activity.priority,
       location: activity.location || '',
       duration_minutes: activity.duration_minutes || 0,
+      user_id: activity.user_id
     });
     setShowEditModal(true);
   };
@@ -190,8 +163,8 @@ export default function Agenda() {
   const handleSaveEdit = async () => {
     if (!selectedActivity) return;
 
-    const { error } = await supabase
-      .from('scheduled_activities')
+    const { error } = await (supabase
+      .from('scheduled_activities') as any)
       .update({
         activity_type: editForm.activity_type,
         title: editForm.title,
@@ -200,6 +173,7 @@ export default function Agenda() {
         priority: editForm.priority,
         location: editForm.location,
         duration_minutes: editForm.duration_minutes,
+        user_id: editForm.user_id
       })
       .eq('id', selectedActivity.id);
 
@@ -349,30 +323,57 @@ export default function Agenda() {
         currentDate.getMonth() === new Date().getMonth() &&
         currentDate.getFullYear() === new Date().getFullYear();
 
+      // Format date for datetime-local: YYYY-MM-DDT08:00
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dateStr = `${year}-${pad(month + 1)}-${pad(day)}T08:00`;
+
+      const handleDayClick = () => {
+        // Here we could potentially pre-fill the date but the ActivityModal component
+        // does not support 'defaultDate' yet. We just open it for now.
+        setShowNewActivityModal(true);
+      };
+
       days.push(
         <div
           key={day}
-          className={`min-h-[120px] border border-gray-200 p-2 ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-white'}`}
+          className={`min-h-[120px] border border-gray-200 p-2 cursor-pointer group relative transition-colors hover:bg-blue-50/50 ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-white'}`}
+          onClick={handleDayClick}
+          title={`Criar atividade em ${day}/${month + 1}/${year}`}
         >
-          <div className={`text-sm font-semibold mb-2 ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
-            {day}
-            {isToday && <span className="ml-1 text-xs">(Hoje)</span>}
+          <div className={`text-sm font-semibold mb-2 flex items-center justify-between ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
+            <span>
+              {day}
+              {isToday && <span className="ml-1 text-xs">(Hoje)</span>}
+            </span>
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-blue-500 text-base leading-none">
+              <Plus className="w-3.5 h-3.5" />
+            </span>
           </div>
           <div className="space-y-1">
-            {dayActivities.slice(0, 3).map(activity => (
-              <div
-                key={activity.id}
-                className={`text-xs p-1.5 rounded cursor-pointer hover:opacity-80 transition-opacity ${getActivityTypeColor(activity.activity_type)}`}
-                title={`${activity.title} - ${new Date(activity.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
-                onClick={() => setSelectedActivity(activity)}
-              >
-                <div className="font-medium truncate">
-                  {new Date(activity.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} {activity.title}
+            {dayActivities.slice(0, 3).map(activity => {
+              const isCompleted = activity.status === 'completed';
+              const isCancelled = activity.status === 'cancelled';
+              const hasEnded = isCompleted || isCancelled;
+
+              return (
+                <div
+                  key={activity.id}
+                  className={`text-xs p-1.5 rounded cursor-pointer hover:opacity-80 transition-opacity flex items-center gap-1.5 ${
+                    hasEnded ? 'bg-gray-100 text-gray-500 line-through' : getActivityTypeColor(activity.activity_type)
+                  }`}
+                  title={`${activity.title} - ${new Date(activity.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+                  onClick={(e) => { e.stopPropagation(); setSelectedActivity(activity); }}
+                >
+                  {isCompleted && <CheckCircle className="w-3 h-3 flex-shrink-0" />}
+                  {isCancelled && <X className="w-3 h-3 flex-shrink-0" />}
+                  <div className="font-medium truncate">
+                    {new Date(activity.scheduled_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} {activity.title}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {dayActivities.length > 3 && (
-              <div className="text-xs text-gray-600 pl-1.5">
+              <div className="text-xs text-gray-600 pl-1.5" onClick={(e) => e.stopPropagation()}>
                 +{dayActivities.length - 3} mais
               </div>
             )}
@@ -503,6 +504,22 @@ export default function Agenda() {
               <option value="follow_up">Follow-up</option>
             </select>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Responsável
+            </label>
+            <select
+              value={filterUser}
+              onChange={(e) => setFilterUser(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="all">Todos</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.full_name}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -537,13 +554,21 @@ export default function Agenda() {
                 {dateActivities.map((activity) => (
                   <div
                     key={activity.id}
-                    className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow"
+                    className={`rounded-lg shadow-sm border p-4 hover:shadow-md transition-shadow ${
+                      activity.status === 'completed' || activity.status === 'cancelled' 
+                        ? 'bg-gray-50 border-gray-200 opacity-80' 
+                        : 'bg-white border-gray-200'
+                    }`}
                   >
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-start gap-3 flex-1">
                         {getStatusIcon(activity.status)}
                         <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 mb-1">{activity.title}</h3>
+                          <h3 className={`font-semibold mb-1 ${
+                            activity.status === 'completed' || activity.status === 'cancelled' ? 'text-gray-500 line-through' : 'text-gray-900'
+                          }`}>
+                            {activity.title}
+                          </h3>
                           <div className="flex flex-wrap gap-2 mb-2">
                             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getActivityTypeColor(activity.activity_type)}`}>
                               {getActivityTypeLabel(activity.activity_type)}
@@ -822,12 +847,29 @@ export default function Agenda() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Responsável *
+                </label>
+                <select
+                  required
+                  value={editForm.user_id}
+                  onChange={(e) => setEditForm({ ...editForm, user_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Selecione um responsável</option>
+                  {users.map(u => (
+                    <option key={u.id} value={u.id}>{u.full_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Título *
                 </label>
                 <input
                   type="text"
                   required
-                  value={editForm.title}
+                  value={editForm.title || ''}
                   onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Ex: Reunião de apresentação"
@@ -839,7 +881,7 @@ export default function Agenda() {
                   Descrição
                 </label>
                 <textarea
-                  value={editForm.description}
+                  value={editForm.description || ''}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={3}
@@ -855,7 +897,7 @@ export default function Agenda() {
                   <input
                     type="datetime-local"
                     required
-                    value={editForm.scheduled_at}
+                    value={editForm.scheduled_at || ''}
                     onChange={(e) => setEditForm({ ...editForm, scheduled_at: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
@@ -867,7 +909,7 @@ export default function Agenda() {
                   </label>
                   <input
                     type="number"
-                    value={editForm.duration_minutes}
+                    value={editForm.duration_minutes || ''}
                     onChange={(e) => setEditForm({ ...editForm, duration_minutes: parseInt(e.target.value) })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="30"
@@ -882,7 +924,7 @@ export default function Agenda() {
                 </label>
                 <input
                   type="text"
-                  value={editForm.location}
+                  value={editForm.location || ''}
                   onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Ex: Escritório ou https://meet.google.com/..."
@@ -909,163 +951,11 @@ export default function Agenda() {
           </div>
         </div>
       )}
-
-      {showNewActivityModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowNewActivityModal(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between z-10">
-              <h2 className="text-2xl font-bold text-gray-900">Nova Atividade</h2>
-              <button
-                onClick={() => setShowNewActivityModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateActivity} className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Lead *
-                </label>
-                <select
-                  required
-                  value={newActivity.lead_id}
-                  onChange={(e) => setNewActivity({ ...newActivity, lead_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Selecione um lead</option>
-                  {leads.map((lead) => (
-                    <option key={lead.id} value={lead.id}>
-                      {lead.full_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Tipo *
-                  </label>
-                  <select
-                    value={newActivity.activity_type}
-                    onChange={(e) => setNewActivity({ ...newActivity, activity_type: e.target.value as ActivityType })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="meeting">Reunião</option>
-                    <option value="call">Ligação</option>
-                    <option value="task">Tarefa</option>
-                    <option value="email">E-mail</option>
-                    <option value="follow_up">Follow-up</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Prioridade *
-                  </label>
-                  <select
-                    value={newActivity.priority}
-                    onChange={(e) => setNewActivity({ ...newActivity, priority: e.target.value as ActivityPriority })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="low">Baixa</option>
-                    <option value="medium">Média</option>
-                    <option value="high">Alta</option>
-                    <option value="urgent">Urgente</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Título *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newActivity.title}
-                  onChange={(e) => setNewActivity({ ...newActivity, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ex: Reunião de apresentação"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Descrição
-                </label>
-                <textarea
-                  value={newActivity.description}
-                  onChange={(e) => setNewActivity({ ...newActivity, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows={3}
-                  placeholder="Detalhes da atividade..."
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Data e Hora *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={newActivity.scheduled_at}
-                    onChange={(e) => setNewActivity({ ...newActivity, scheduled_at: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Duração (minutos)
-                  </label>
-                  <input
-                    type="number"
-                    value={newActivity.duration_minutes}
-                    onChange={(e) => setNewActivity({ ...newActivity, duration_minutes: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="30"
-                    min="1"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Local / Link
-                </label>
-                <input
-                  type="text"
-                  value={newActivity.location}
-                  onChange={(e) => setNewActivity({ ...newActivity, location: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ex: Escritório ou https://meet.google.com/..."
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowNewActivityModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Criar Atividade
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ActivityModal
+        isOpen={showNewActivityModal}
+        onClose={() => setShowNewActivityModal(false)}
+        onSuccess={() => fetchActivities()}
+      />
     </div>
   );
 }

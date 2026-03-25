@@ -8,8 +8,8 @@ interface Stage {
   stage_key: string;
   color: string;
   order_index: number;
-  is_default: boolean;
-  created_at: string;
+  is_default: boolean | null;
+  created_at: string | null;
 }
 
 const PRESET_COLORS = [
@@ -383,7 +383,7 @@ export default function Stages() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => deleteStage(stage.id, stage.is_default)}
+                      onClick={() => deleteStage(stage.id, stage.is_default ?? false)}
                       className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
                       title={stage.is_default ? "Excluir etapa padrão (use com cuidado)" : "Excluir"}
                     >

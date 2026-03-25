@@ -113,20 +113,13 @@ O sistema calcula automaticamente um score de 0-100 baseado em 4 pilares:
 
 ### Pilar Patrimônio (0-25 pontos, cap 25)
 
-- **Tipos de bens** (múltipla seleção):
-  - `empresa_cotas` = 10 pontos
-  - `imovel_financiado` = 7 pontos
-  - `imovel_quitado` = 5 pontos
-  - `investimentos` = 5 pontos
-  - `veiculos` = 3 pontos
-  - `sem_bens` = 0 pontos
+Baseado exclusivamente na faixa de valor dos bens. O tipo de bens é registrado para contexto da negociação mas **não impacta o score**.
 
-- **Faixa de valor**:
-  - `acima_1m` = 10 pontos
-  - `500k_1m` = 7 pontos
-  - `200k_500k` = 4 pontos
-  - `ate_200k` = 2 pontos
-  - `prefiro_nao_informar` = 3 pontos
+- **Faixa de valor** (`valor_bens_real`):
+  - `acima_1m` = 25 pontos
+  - `500k_1m` = 18 pontos
+  - `200k_500k` = 10 pontos
+  - `ate_200k` = 4 pontos
 
 ### Pilar Fit Oferta (0-5 pontos)
 
@@ -210,7 +203,7 @@ Gráficos:
 
 - Visualização visual do funil
 - Drag & drop para mudar status
-- Colunas: Novo → Triagem → Qualificado → Agendado → Compareceu → Proposta → Ganho/Perdido
+- Colunas: Novo → Triagem → Qualificado → Agendado → Compareceu / Não Compareceu → Proposta → Ganho/Perdido/Maturação
 - Cards mostram:
   - Nome e contato
   - Score e classificação
