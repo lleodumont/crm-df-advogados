@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Search, Filter, Plus, Phone, Mail, TrendingUp, ChevronDown, Tag as TagIcon, X } from 'lucide-react';
+import { Search, Filter, Plus, Phone, Mail, TrendingUp, ChevronDown, Tag as TagIcon, X, Trash2 } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -60,6 +60,7 @@ export default function LeadsList() {
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [staleOnly, setStaleOnly] = useState(() => {
     return new URLSearchParams(window.location.search).get('stale') === 'true';
   });
@@ -308,6 +309,39 @@ export default function LeadsList() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === leads.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(leads.map(l => l.id)));
+    }
+  };
+
+  const deleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Excluir ${selectedIds.size} lead(s)? Esta ação não pode ser desfeita.`)) return;
+    try {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .in('id', Array.from(selectedIds));
+      if (error) throw error;
+      setSelectedIds(new Set());
+      loadLeads();
+    } catch (error) {
+      console.error('Error deleting leads:', error);
+      alert('Erro ao excluir leads.');
+    }
+  };
+
   const assignLead = async (leadId: string, userId: string) => {
     try {
       const { error } = await supabase
@@ -399,14 +433,25 @@ export default function LeadsList() {
         </div>
       )}
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Leads</h1>
-        <a
-          href="/leads/import"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Importar Leads
-        </a>
+        <h1 className="text-xl md:text-3xl font-bold text-gray-900">Leads</h1>
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={deleteSelected}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Excluir {selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''}
+            </button>
+          )}
+          <a
+            href="/leads/import"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Importar Leads
+          </a>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow p-4">
@@ -641,11 +686,73 @@ export default function LeadsList() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow">
+      {/* ── MOBILE: card list ── */}
+      <div className="md:hidden space-y-3">
+        {leads.map((lead) => {
+          const classMap: Record<string, string> = {
+            estrategico: 'bg-purple-100 text-purple-800',
+            qualificado: 'bg-blue-100 text-blue-800',
+            morno: 'bg-yellow-100 text-yellow-800',
+          };
+          const classBadge = classMap[lead.classification || ''] || 'bg-gray-100 text-gray-600';
+          return (
+            <a
+              key={lead.id}
+              href={`/leads/${lead.id}`}
+              className="block bg-white rounded-xl shadow-sm border border-gray-100 p-4"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{lead.full_name || '—'}</p>
+                  {lead.phone && (
+                    <a
+                      href={`tel:${lead.phone}`}
+                      onClick={e => e.stopPropagation()}
+                      className="text-sm text-blue-600 mt-0.5 block"
+                    >
+                      {lead.phone}
+                    </a>
+                  )}
+                </div>
+                <span className="text-lg font-bold text-gray-700 flex-shrink-0">{lead.score_total ?? 0}</span>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {lead.classification && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${classBadge}`}>
+                    {lead.classification === 'estrategico' ? 'Super qualificado' : lead.classification === 'qualificado' ? 'Qualificado' : 'Morno'}
+                  </span>
+                )}
+                {lead.status && (
+                  <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-gray-100 text-gray-700">
+                    {lead.status}
+                  </span>
+                )}
+                <span className="text-xs text-gray-400 ml-auto">
+                  {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                </span>
+              </div>
+            </a>
+          );
+        })}
+        {leads.length === 0 && !loading && (
+          <p className="text-center text-gray-400 py-10">Nenhum lead encontrado</p>
+        )}
+      </div>
+
+      {/* ── DESKTOP: table ── */}
+      <div className="hidden md:block bg-white rounded-lg shadow">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
+              <th className="px-4 py-3 w-10">
+                <input
+                  type="checkbox"
+                  checked={leads.length > 0 && selectedIds.size === leads.length}
+                  onChange={toggleSelectAll}
+                  className="rounded border-gray-300"
+                />
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Lead
               </th>
@@ -674,7 +781,15 @@ export default function LeadsList() {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {leads.map((lead) => (
-              <tr key={lead.id} className="hover:bg-gray-50">
+              <tr key={lead.id} className={`hover:bg-gray-50 ${selectedIds.has(lead.id) ? 'bg-red-50' : ''}`}>
+                <td className="px-4 py-4">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(lead.id)}
+                    onChange={() => toggleSelect(lead.id)}
+                    className="rounded border-gray-300"
+                  />
+                </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
                     <div>

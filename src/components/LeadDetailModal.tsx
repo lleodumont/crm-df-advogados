@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Database } from '../lib/database.types';
 import CustomFieldsViewer from './CustomFieldsViewer';
+import { notify } from '../lib/toast';
 
 type Lead = Database['public']['Tables']['leads']['Row'];
 
@@ -47,6 +48,9 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
   const [savingValidation, setSavingValidation] = useState(false);
   const [users, setUsers] = useState<{ id: string; full_name: string }[] | any[]>([]);
   const [currentAssigned, setCurrentAssigned] = useState<{ id: string; full_name: string } | any | null>(null);
+  const [showLossReasonModal, setShowLossReasonModal] = useState(false);
+  const [pendingLossStatus, setPendingLossStatus] = useState<string | null>(null);
+  const [lossReason, setLossReason] = useState('');
 
   const [editForm, setEditForm] = useState({
     full_name: '',
@@ -187,10 +191,10 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
         setLeadDetails({ ...leadDetails, ...editForm } as any);
       }
       setIsEditing(false);
-      alert('Lead atualizado com sucesso!');
+      notify.success('Lead atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating lead:', error);
-      alert('Erro ao atualizar lead');
+      notify.error('Erro ao atualizar lead');
     }
   };
 
@@ -227,7 +231,7 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
 
         if (upsertError) {
           console.error(`Error saving ${ans.question_key}:`, upsertError);
-          alert(`Erro ao salvar ${ans.question_key}: ${upsertError.message}`);
+          notify.error(`Erro ao salvar ${ans.question_key}: ${upsertError.message}`);
           throw upsertError;
         }
       }
@@ -243,21 +247,27 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
       // Recalculate score
       await (supabase.rpc('calculate_lead_score', { p_lead_id: leadId } as any) as any);
       
-      alert('Validação salva e score recalculado!');
+      notify.success('Validação salva e score recalculado!');
       await loadAllData();
       setShowValidation(false);
     } catch (error) {
       console.error('Error saving validation:', error);
-      alert('Erro ao salvar validação');
+      notify.error('Erro ao salvar validação');
     } finally {
       setSavingValidation(false);
     }
   };
 
-  const updateLeadStatus = async (newStatus: string) => {
+  const updateLeadStatus = async (newStatus: string, lossReasonParam?: string) => {
+    if (newStatus === 'perdido' && !lossReasonParam) {
+      setPendingLossStatus(newStatus);
+      setShowStageSelector(false);
+      setShowLossReasonModal(true);
+      return;
+    }
     setUpdatingStage(true);
     try {
-      const { error } = await supabase.from('leads').update({ status: newStatus as any }).eq('id', leadId);
+      const { error } = await supabase.from('leads').update({ status: newStatus as any, ...(lossReasonParam ? { loss_reason: lossReasonParam } : {}) } as any).eq('id', leadId);
       if (error) throw error;
       if (leadDetails) setLeadDetails({ ...leadDetails, status: newStatus });
       setShowStageSelector(false);
@@ -266,6 +276,19 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
     } finally {
       setUpdatingStage(false);
     }
+  };
+
+  const confirmLossReason = () => {
+    if (!lossReason.trim()) {
+      notify.error('Por favor, informe o motivo da perda');
+      return;
+    }
+    if (pendingLossStatus) {
+      updateLeadStatus(pendingLossStatus, lossReason);
+    }
+    setShowLossReasonModal(false);
+    setPendingLossStatus(null);
+    setLossReason('');
   };
 
   const addTag = async (tagId: string) => {
@@ -312,7 +335,7 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
       if (error) throw error;
       setActivityForm({ title: '', activity_type: 'call', scheduled_at: '', priority: 'medium', duration_minutes: 30 });
       setShowActivityPopover(false);
-      alert('Atividade agendada!');
+      notify.success('Atividade agendada!');
     } catch (error) {
       console.error('Error creating activity:', error);
     } finally {
@@ -350,8 +373,8 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[110] p-4 animate-in fade-in" onClick={onClose}>
-      <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border border-white/20" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center z-[110] md:p-4 animate-in fade-in" onClick={onClose}>
+      <div className="bg-white rounded-t-[2rem] md:rounded-[2rem] shadow-2xl w-full md:max-w-4xl h-[95vh] md:h-auto md:max-h-[90vh] overflow-hidden flex flex-col border border-white/20" onClick={(e) => e.stopPropagation()}>
         
         {/* Top Header Row - Branding & Navigation */}
         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
@@ -554,9 +577,9 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
                         </select>
                       </td>
                     </tr>
-                    {/* Patrimônio - Tipo de Bens */}
+                    {/* Tipo de Bens */}
                     <tr>
-                      <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Tipo de Bens</td>
+                      <td className="px-6 py-4"></td>
                       <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('assets_types') || 'Não informado'}</td>
                       <td className="px-6 py-4">
                         <div className="space-y-1.5">
@@ -567,6 +590,7 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
                             { value: 'veiculo', label: 'Veículos' },
                             { value: 'investimentos', label: 'Investimentos / ações' },
                             { value: 'previdencia', label: 'Previdência privada' },
+                            { value: 'dividas', label: 'Dívidas' },
                           ].map(opt => {
                             const current = (editForm.tipo_bens_real || '').split(',').filter(Boolean);
                             const checked = current.includes(opt.value);
@@ -648,21 +672,6 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Próximo Passo Estratégico</label>
-                  <select 
-                    className="w-full px-4 py-3 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    value={validationForm.proximo_passo}
-                    onChange={e => setValidationForm({...validationForm, proximo_passo: e.target.value})}
-                  >
-                    <option value="">Selecione o melhor caminho...</option>
-                    <option value="agendar_reuniao">🗓️ Agendar Reunião de Fechamento</option>
-                    <option value="enviar_proposta">📨 Enviar Proposta Formal</option>
-                    <option value="aguardar_documentos">📂 Aguardar Envio de Documentos</option>
-                    <option value="follow_ups_programados">🔄 Follow-ups Programados</option>
-                    <option value="descartar">❌ Descartar (Lead Desqualificado)</option>
-                  </select>
-                </div>
                 <div className="space-y-3">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Prazos e Expectativa</label>
                   <select 
@@ -852,6 +861,54 @@ export default function LeadDetailModal({ leadId, onClose }: Props) {
       {showTagSelector && <div className="fixed inset-0 z-[120]" onClick={() => setShowTagSelector(false)} />}
       {showStageSelector && <div className="fixed inset-0 z-[120]" onClick={() => setShowStageSelector(false)} />}
       {showAssignPopover && <div className="fixed inset-0 z-[120]" onClick={() => setShowAssignPopover(false)} />}
+
+      {/* Modal de motivo de perda */}
+      {showLossReasonModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[200]">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Motivo da perda</h3>
+            <p className="text-sm text-gray-500 mb-4">Selecione o motivo pelo qual este lead foi perdido.</p>
+            <div className="space-y-2 mb-5">
+              {[
+                'Valor muito alto',
+                'Não é o perfil / Sem bens',
+                'Já fechou com concorrente',
+                'Sem interesse no momento',
+                'Não atende o telefone / Sem contato',
+                'Decidiu não prosseguir no momento',
+                'Outro',
+              ].map((reason) => (
+                <button
+                  key={reason}
+                  onClick={() => setLossReason(reason)}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                    lossReason === reason
+                      ? 'bg-red-50 border-red-400 text-red-700'
+                      : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowLossReasonModal(false); setPendingLossStatus(null); setLossReason(''); }}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmLossReason}
+                disabled={!lossReason}
+                className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Confirmar perda
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

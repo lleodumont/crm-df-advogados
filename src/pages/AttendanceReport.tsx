@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Users, MessageSquare, Send, Inbox, Calendar, TrendingUp } from 'lucide-react';
+import { Users, MessageSquare, Send, Inbox, Calendar, TrendingUp, X } from 'lucide-react';
 
 interface AttendantStats {
   userId: string;
@@ -12,6 +12,14 @@ interface AttendantStats {
   sent: number;
   received: number;
   total: number;
+  conversationLeadIds: string[];
+  sentLeadIds: string[];
+  receivedLeadIds: string[];
+}
+
+interface LeadModal {
+  title: string;
+  leadIds: string[];
 }
 
 type Period = 'today' | 'week' | 'month' | 'custom';
@@ -47,6 +55,9 @@ export default function AttendanceReport() {
   const [period, setPeriod] = useState<Period>('week');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [leadModal, setLeadModal] = useState<LeadModal | null>(null);
+  const [modalLeads, setModalLeads] = useState<{ id: string; full_name: string; phone: string; status: string }[]>([]);
+  const [loadingModal, setLoadingModal] = useState(false);
 
   useEffect(() => {
     if (period === 'custom' && (!customStart || !customEnd)) return;
@@ -76,9 +87,9 @@ export default function AttendanceReport() {
       if (!messages) { setStats([]); return; }
 
       // 3. Agregar por usuário
-      const userMap: Record<string, { sent: number; received: number; conversations: Set<string> }> = {};
+      const userMap: Record<string, { sent: number; received: number; conversations: Set<string>; sentLeads: Set<string>; receivedLeads: Set<string> }> = {};
       users.forEach(u => {
-        userMap[u.id] = { sent: 0, received: 0, conversations: new Set() };
+        userMap[u.id] = { sent: 0, received: 0, conversations: new Set(), sentLeads: new Set(), receivedLeads: new Set() };
       });
 
       messages.forEach((msg: any) => {
@@ -86,12 +97,18 @@ export default function AttendanceReport() {
 
         if (msg.direction === 'outbound' && msg.sent_by && userMap[msg.sent_by]) {
           userMap[msg.sent_by].sent++;
-          if (msg.lead_id) userMap[msg.sent_by].conversations.add(msg.lead_id);
+          if (msg.lead_id) {
+            userMap[msg.sent_by].conversations.add(msg.lead_id);
+            userMap[msg.sent_by].sentLeads.add(msg.lead_id);
+          }
         }
 
         if (msg.direction === 'inbound' && ownerId && userMap[ownerId]) {
           userMap[ownerId].received++;
-          if (msg.lead_id) userMap[ownerId].conversations.add(msg.lead_id);
+          if (msg.lead_id) {
+            userMap[ownerId].conversations.add(msg.lead_id);
+            userMap[ownerId].receivedLeads.add(msg.lead_id);
+          }
         }
       });
 
@@ -104,6 +121,9 @@ export default function AttendanceReport() {
         sent: userMap[u.id]?.sent ?? 0,
         received: userMap[u.id]?.received ?? 0,
         total: (userMap[u.id]?.sent ?? 0) + (userMap[u.id]?.received ?? 0),
+        conversationLeadIds: Array.from(userMap[u.id]?.conversations ?? []),
+        sentLeadIds: Array.from(userMap[u.id]?.sentLeads ?? []),
+        receivedLeadIds: Array.from(userMap[u.id]?.receivedLeads ?? []),
       }));
 
       // Ordena por total de mensagens desc
@@ -134,6 +154,23 @@ export default function AttendanceReport() {
       'Recebidas': s.received,
     }));
 
+  const openLeadModal = async (title: string, leadIds: string[]) => {
+    if (!leadIds.length) return;
+    setLeadModal({ title, leadIds });
+    setLoadingModal(true);
+    try {
+      const { data } = await supabase
+        .from('leads')
+        .select('id, full_name, phone, status')
+        .in('id', leadIds);
+      setModalLeads(data || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingModal(false);
+    }
+  };
+
   const periodLabel: Record<Period, string> = {
     today: 'Hoje',
     week: 'Esta semana',
@@ -142,6 +179,44 @@ export default function AttendanceReport() {
   };
 
   return (
+    <>
+    {leadModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setLeadModal(null)}>
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <h2 className="font-bold text-gray-900 text-sm">{leadModal.title}</h2>
+            <button onClick={() => setLeadModal(null)} className="p-1 hover:bg-gray-100 rounded-lg">
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
+          <div className="overflow-y-auto flex-1 divide-y divide-gray-50">
+            {loadingModal ? (
+              <div className="flex items-center justify-center h-32 text-gray-400 text-sm">Carregando...</div>
+            ) : modalLeads.length === 0 ? (
+              <p className="text-center text-gray-400 py-10 text-sm">Nenhum lead encontrado</p>
+            ) : modalLeads.map(lead => (
+              <a
+                key={lead.id}
+                href={`/leads/${lead.id}`}
+                onClick={() => setLeadModal(null)}
+                className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition"
+              >
+                <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-700 flex-shrink-0">
+                  {lead.full_name.split(' ').map((n: string) => n[0]).slice(0,2).join('').toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">{lead.full_name}</p>
+                  <p className="text-xs text-gray-400">{lead.phone}</p>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 capitalize flex-shrink-0">
+                  {lead.status}
+                </span>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    )}
     <div className="space-y-6">
       {/* Cabeçalho */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -238,7 +313,7 @@ export default function AttendanceReport() {
         ) : stats.length === 0 ? (
           <div className="flex items-center justify-center h-40 text-gray-400 text-sm">Nenhum dado no período</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]">
             <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
               <tr>
                 <th className="px-6 py-3 text-left">Atendente</th>
@@ -273,16 +348,16 @@ export default function AttendanceReport() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="font-semibold text-purple-700">{s.conversations}</span>
+                      <button onClick={() => openLeadModal(`Conversas de ${s.name}`, s.conversationLeadIds)} className="font-semibold text-purple-700 hover:underline cursor-pointer">{s.conversations}</button>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="font-semibold text-blue-700">{s.sent}</span>
+                      <button onClick={() => openLeadModal(`Enviadas por ${s.name}`, s.sentLeadIds)} className="font-semibold text-blue-700 hover:underline cursor-pointer">{s.sent}</button>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="font-semibold text-green-700">{s.received}</span>
+                      <button onClick={() => openLeadModal(`Recebidas por ${s.name}`, s.receivedLeadIds)} className="font-semibold text-green-700 hover:underline cursor-pointer">{s.received}</button>
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <span className="font-bold text-gray-900">{s.total}</span>
+                      <button onClick={() => openLeadModal(`Total de ${s.name}`, s.conversationLeadIds)} className="font-bold text-gray-900 hover:underline cursor-pointer">{s.total}</button>
                     </td>
                     <td className="px-6 py-4 w-40">
                       <div className="flex items-center gap-2">
@@ -299,9 +374,10 @@ export default function AttendanceReport() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>
+    </>
   );
 }

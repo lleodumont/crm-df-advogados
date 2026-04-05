@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Users, Calendar, FileText, DollarSign, TrendingUp, CalendarCheck, BarChart3, Target, Zap, Award, ArrowRight, MousePointer2, PieChart } from 'lucide-react';
+import { PieChart as RechartsPie, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 
 
@@ -16,11 +17,12 @@ interface DashboardMetrics {
   meetingsNoShow: number;
   meetingsPending: number;
   proposalsPresented: number;
+  proposalsValue: number;
   dealsWon: number;
   averageTicket: number;
   totalRevenue: number;
   leadsByDay: { date: string; count: number }[];
-  leadsByStatus: { status: string; count: number; percentage: number }[];
+  leadsByStatus: { status: string; name: string; color: string; count: number; percentage: number }[];
   leadsByUTMSource: { source: string; count: number }[];
   leadsByUTMMedium: { medium: string; count: number }[];
   leadsByUTMCampaign: { campaign: string; count: number }[];
@@ -41,11 +43,12 @@ export default function Dashboard() {
   const loadMetrics = async () => {
     setLoading(true);
     try {
-      const { data: leads } = await (supabase.from('leads').select('*') as any);
-      const { data: answers } = await (supabase.from('lead_answers').select('*') as any);
-      const { data: proposals } = await (supabase.from('proposals').select('*') as any);
-      const { data: meetingsData } = await (supabase.from('meetings').select('*') as any);
-      const { data: scheduledMeetingsData } = await (supabase.from('scheduled_activities').select('*').eq('activity_type', 'meeting') as any);
+      const { data: leads } = await (supabase.from('leads').select('*').limit(5000) as any);
+      const { data: answers } = await (supabase.from('lead_answers').select('*').limit(20000) as any);
+      const { data: proposals } = await (supabase.from('proposals').select('*').limit(2000) as any);
+      const { data: meetingsData } = await (supabase.from('meetings').select('*').limit(2000) as any);
+      const { data: scheduledMeetingsData } = await (supabase.from('scheduled_activities').select('*').eq('activity_type', 'meeting').limit(2000) as any);
+      const { data: pipelineStages } = await (supabase.from('pipeline_stages').select('stage_key, name, color').order('order_index') as any);
 
       const getLocalDateString = (date: Date) => {
         return new Intl.DateTimeFormat('sv-SE').format(date);
@@ -116,6 +119,14 @@ export default function Dashboard() {
 
       const averageTicket = leadsWithWonProposals > 0 ? totalRevenue / leadsWithWonProposals : 0;
 
+      // Valor em propostas ainda na mesa (proposta_enviada, não fechadas)
+      const proposalsValue = hasProposalsRecords
+        ? proposals
+            .filter((p: any) => p.status !== 'won' && p.status !== 'lost')
+            .reduce((sum: number, p: any) => sum + (p.value || 0), 0)
+        : (leads?.filter((l: any) => l.status === 'proposta_enviada') || [])
+            .reduce((sum: number, l: any) => sum + (Number(l.deal_value) || 0), 0);
+
       const last14Days = Array.from({ length: 14 }, (_, i) => {
         const date = new Date();
         date.setDate(date.getDate() - (13 - i));
@@ -127,30 +138,36 @@ export default function Dashboard() {
         count: leads?.filter((l: any) => l.created_at.startsWith(date)).length || 0,
       }));
 
-      const statusMap = new Map<string, { count: number; color: string }>();
-      statusMap.set('novo', { count: 0, color: 'bg-blue-500' });
-      statusMap.set('triagem', { count: 0, color: 'bg-orange-500' });
-      statusMap.set('qualificado', { count: 0, color: 'bg-green-500' });
-      statusMap.set('agendado', { count: 0, color: 'bg-purple-500' });
-      statusMap.set('compareceu', { count: 0, color: 'bg-cyan-500' });
-      statusMap.set('no_show', { count: 0, color: 'bg-orange-500' });
-      statusMap.set('proposta_enviada', { count: 0, color: 'bg-pink-500' });
-      statusMap.set('ganho', { count: 0, color: 'bg-emerald-500' });
-      statusMap.set('perdido', { count: 0, color: 'bg-red-500' });
-      statusMap.set('maturacao', { count: 0, color: 'bg-violet-500' });
-
+      // Contagem de leads por status
+      const statusCountMap = new Map<string, number>();
       leads?.forEach((l: any) => {
-        const current = statusMap.get(l.status);
-        if (current) {
-          statusMap.set(l.status, { ...current, count: current.count + 1 });
-        }
+        statusCountMap.set(l.status, (statusCountMap.get(l.status) || 0) + 1);
       });
 
-      const leadsByStatus = Array.from(statusMap.entries())
-        .map(([status, data]) => ({
-          status,
-          count: data.count,
-          percentage: totalLeads > 0 ? (data.count / totalLeads) * 100 : 0,
+      // Fallback de cores e nomes caso pipeline_stages esteja vazio
+      const fallbackStages = [
+        { stage_key: 'novo', name: 'Novo Lead', color: '#3B82F6' },
+        { stage_key: 'triagem', name: 'Triagem', color: '#F97316' },
+        { stage_key: 'qualificado', name: 'Qualificado', color: '#22C55E' },
+        { stage_key: 'agendado', name: 'Reunião Agendada', color: '#A855F7' },
+        { stage_key: 'compareceu', name: 'Compareceu', color: '#06B6D4' },
+        { stage_key: 'no_show', name: 'No Show', color: '#FB923C' },
+        { stage_key: 'proposta_enviada', name: 'Proposta Enviada', color: '#EC4899' },
+        { stage_key: 'ganho', name: 'Ganho', color: '#10B981' },
+        { stage_key: 'perdido', name: 'Perdido', color: '#EF4444' },
+        { stage_key: 'maturacao', name: 'Maturação', color: '#8B5CF6' },
+      ];
+
+      const stages: { stage_key: string; name: string; color: string }[] =
+        pipelineStages?.length ? pipelineStages : fallbackStages;
+
+      const leadsByStatus = stages
+        .map(stage => ({
+          status: stage.stage_key,
+          name: stage.name,
+          color: stage.color,
+          count: statusCountMap.get(stage.stage_key) || 0,
+          percentage: totalLeads > 0 ? ((statusCountMap.get(stage.stage_key) || 0) / totalLeads) * 100 : 0,
         }))
         .filter(item => item.count > 0);
 
@@ -240,6 +257,12 @@ export default function Dashboard() {
           color: 'bg-cyan-500',
         },
         {
+          stage: 'Proposta na Mesa',
+          count: proposalsPresented,
+          percentage: totalLeads > 0 ? (proposalsPresented / totalLeads) * 100 : 0,
+          color: 'bg-pink-500',
+        },
+        {
           stage: 'Negócio Fechado',
           count: dealsWon,
           percentage: totalLeads > 0 ? (dealsWon / totalLeads) * 100 : 0,
@@ -264,6 +287,7 @@ export default function Dashboard() {
         meetingsNoShow,
         meetingsPending,
         proposalsPresented,
+        proposalsValue,
         dealsWon,
         averageTicket,
         totalRevenue,
@@ -352,7 +376,7 @@ export default function Dashboard() {
       </div>
 
       {/* Seção 2: Pipeline de Eficiência (Financial & Scheduling) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-6">
         <MetricCard
           title="Total Agendamentos"
           value={metrics.totalScheduledEver}
@@ -388,6 +412,14 @@ export default function Dashboard() {
           href="/leads?status=no_show"
         />
         <MetricCard
+          title="Propostas Apresentadas"
+          value={metrics.proposalsPresented}
+          icon={FileText}
+          color="pink"
+          compact
+          href="/leads?statuses=proposta_enviada,ganho,perdido"
+        />
+        <MetricCard
           title="Ticket Médio"
           value={metrics.averageTicket > 0 ? `R$ ${metrics.averageTicket.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
           icon={DollarSign}
@@ -400,6 +432,15 @@ export default function Dashboard() {
           icon={Award}
           color="blue"
           compact
+        />
+        <MetricCard
+          title="Propostas na Mesa"
+          value={metrics.proposalsValue > 0 ? `R$ ${metrics.proposalsValue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
+          icon={TrendingUp}
+          color="emerald"
+          compact
+          description="Valor em negociação"
+          href="/leads?status=proposta_enviada"
         />
       </div>
 
@@ -416,7 +457,7 @@ export default function Dashboard() {
           <h2 className="text-xl font-bold text-gray-900">Jornada do Cliente</h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 relative">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 relative">
           {metrics.funnelData.map((item, i) => (
             <div key={i} className="relative">
               <div className="bg-white/80 border border-gray-100 rounded-xl p-5 hover:border-blue-200 hover:shadow-md transition-all h-full z-10 relative">
@@ -464,51 +505,24 @@ export default function Dashboard() {
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-6">
-            {metrics.leadsByStatus.map((item, i) => {
-              const statusLabels: Record<string, string> = {
-                novo: 'Novo Lead',
-                triagem: 'Triagem',
-                qualificado: 'Qualificado',
-                agendado: 'Reunião Agendada',
-                compareceu: 'Compareceu',
-                proposta_enviada: 'Proposta Enviada',
-                ganho: 'Ganho',
-                perdido: 'Perdido',
-                maturacao: 'Maturação',
-                negociacao: 'Negociação',
-              };
-
-              const colors: Record<string, string> = {
-                novo: 'bg-blue-400',
-                triagem: 'bg-amber-400',
-                qualificado: 'bg-indigo-400',
-                agendado: 'bg-purple-400',
-                compareceu: 'bg-cyan-400',
-                proposta_enviada: 'bg-pink-400',
-                ganho: 'bg-emerald-500',
-                perdido: 'bg-red-400',
-                maturacao: 'bg-violet-400',
-              };
-
-              return (
-                <div key={i} className="group cursor-default">
-                  <div className="flex justify-between items-end text-sm mb-2 px-1">
-                    <span className="font-bold text-gray-700 group-hover:text-blue-600 transition-colors">
-                      {statusLabels[item.status] || item.status}
-                    </span>
-                    <span className="text-gray-500 text-xs font-medium">
-                      {item.count} <span className="text-gray-300 ml-1">|</span> {item.percentage.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden group-hover:shadow-sm transition-all">
-                    <div
-                      className={`${colors[item.status] || 'bg-blue-500'} h-2.5 rounded-full transition-all duration-700`}
-                      style={{ width: `${Math.max(item.percentage, 2)}%` }}
-                    />
-                  </div>
+            {metrics.leadsByStatus.map((item, i) => (
+              <div key={i} className="group cursor-default">
+                <div className="flex justify-between items-end text-sm mb-2 px-1">
+                  <span className="font-bold text-gray-700 group-hover:text-blue-600 transition-colors">
+                    {item.name}
+                  </span>
+                  <span className="text-gray-500 text-xs font-medium">
+                    {item.count} <span className="text-gray-300 ml-1">|</span> {item.percentage.toFixed(1)}%
+                  </span>
                 </div>
-              );
-            })}
+                <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden group-hover:shadow-sm transition-all">
+                  <div
+                    className="h-2.5 rounded-full transition-all duration-700"
+                    style={{ width: `${Math.max(item.percentage, 2)}%`, backgroundColor: item.color }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -695,31 +709,39 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-12 gap-y-10">
             {Array.from(new Set(metrics.leadAnswers.map(a => a.question))).map((question, i) => {
               const answers = metrics.leadAnswers.filter(a => a.question === question);
-              const total = answers.reduce((sum, a) => sum + a.count, 0);
+              const PIE_COLORS = ['#6366F1','#22C55E','#F59E0B','#EC4899','#06B6D4','#F97316','#8B5CF6','#EF4444'];
+              const pieData = answers.map((a, idx) => ({
+                name: a.answer,
+                value: a.count,
+                color: PIE_COLORS[idx % PIE_COLORS.length],
+              }));
 
               return (
                 <div key={i} className="bg-gray-50/30 p-6 rounded-2xl border border-gray-100">
-                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-6 border-b pb-3">
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-4 border-b pb-3">
                     {question.replace(/_/g, ' ')}
                   </h3>
-                  <div className="space-y-5">
-                    {answers.map((answer, j) => (
-                      <div key={j}>
-                        <div className="flex justify-between text-sm mb-2 font-medium">
-                          <span className="text-gray-700">{answer.answer}</span>
-                          <span className="text-blue-600 font-bold">
-                            {answer.count} <span className="text-gray-300 font-normal">({((answer.count / total) * 100).toFixed(0)}%)</span>
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-200/50 rounded-full h-2">
-                          <div
-                            className="bg-indigo-500 h-2 rounded-full transition-all duration-1000"
-                            style={{ width: `${(answer.count / total) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <RechartsPie>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={75}
+                        dataKey="value"
+                        label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                        labelLine={false}
+                      >
+                        {pieData.map((entry, idx) => (
+                          <Cell key={idx} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number, name: string) => [value, name]} />
+                      <Legend
+                        formatter={(value) => <span className="text-xs text-gray-700">{value}</span>}
+                      />
+                    </RechartsPie>
+                  </ResponsiveContainer>
                 </div>
               );
             })}
@@ -735,7 +757,7 @@ interface MetricCardProps {
   value: string | number;
   icon: React.ElementType;
   compact?: boolean;
-  color?: 'blue' | 'emerald' | 'indigo' | 'orange' | 'purple' | 'cyan' | 'amber';
+  color?: 'blue' | 'emerald' | 'indigo' | 'orange' | 'purple' | 'cyan' | 'amber' | 'pink';
   description?: string;
   highlight?: boolean;
   href?: string;
@@ -750,6 +772,7 @@ function MetricCard({ title, value, icon: Icon, color = 'blue', description, hig
     purple: 'text-purple-600 bg-purple-50 border-purple-100',
     cyan: 'text-cyan-600 bg-cyan-50 border-cyan-100',
     amber: 'text-amber-600 bg-amber-50 border-amber-100',
+    pink: 'text-pink-600 bg-pink-50 border-pink-100',
   };
 
   const ringClass = highlight ? 'ring-2 ring-orange-500 ring-offset-2' : '';

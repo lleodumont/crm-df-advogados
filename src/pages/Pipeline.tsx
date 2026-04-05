@@ -5,6 +5,7 @@ import { Phone, Mail, TrendingUp, Calendar, Plus, X, FileText, Clock, Filter, Ba
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 import LeadDetailModal from '../components/LeadDetailModal';
+import { notify } from '../lib/toast';
 
 type Lead = Database['public']['Tables']['leads']['Row'];
 type LeadStatus = Database['public']['Tables']['leads']['Row']['status'];
@@ -32,7 +33,7 @@ const LOSS_REASONS = [
 ];
 
 // Componente interno para renderizar a lista virtualizada de cards do Kanban
-function KanbanColumnBody({ columnLeads, stage, allProposals, leadActivities, lastInteractions, draggedLead, showActionMenu, setShowActionMenu, handleDragStart, openWhatsAppChat, openLeadDetail, formatCurrency, formatDate, formatRelativeTime }: {
+function KanbanColumnBody({ columnLeads, stage, allProposals, leadActivities, lastInteractions, draggedLead, showActionMenu, setShowActionMenu, handleDragStart, openWhatsAppChat, openLeadDetail, formatCurrency, formatDate, formatRelativeTime, allStages, onMoveToStage }: {
   columnLeads: any[];
   stage: PipelineStage;
   allProposals: any[];
@@ -47,6 +48,8 @@ function KanbanColumnBody({ columnLeads, stage, allProposals, leadActivities, la
   formatCurrency: (val: number) => string;
   formatDate: (val: string) => string;
   formatRelativeTime: (val: string) => string;
+  allStages: PipelineStage[];
+  onMoveToStage: (leadId: string, stageKey: string) => void;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
   const useVirtualized = columnLeads.length > 10;
@@ -54,9 +57,10 @@ function KanbanColumnBody({ columnLeads, stage, allProposals, leadActivities, la
   const rowVirtualizer = useVirtualizer({
     count: columnLeads.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 120,
+    estimateSize: () => 160,
     overscan: 3,
     enabled: useVirtualized,
+    measureElement: (element) => element?.getBoundingClientRect().height ?? 160,
   });
 
   if (columnLeads.length === 0) {
@@ -195,6 +199,24 @@ function KanbanColumnBody({ columnLeads, stage, allProposals, leadActivities, la
               <MessageCircle className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Mobile: mover para etapa */}
+          <div className="md:hidden mt-2 pt-2 border-t border-gray-100">
+            <select
+              onClick={e => e.stopPropagation()}
+              onChange={e => {
+                if (e.target.value) onMoveToStage(lead.id, e.target.value);
+                e.target.value = '';
+              }}
+              defaultValue=""
+              className="w-full text-xs py-1.5 px-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600"
+            >
+              <option value="" disabled>Mover para etapa...</option>
+              {allStages.filter(s => s.stage_key !== lead.status).map(s => (
+                <option key={s.id} value={s.stage_key}>{s.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
     );
@@ -224,6 +246,8 @@ function KanbanColumnBody({ columnLeads, stage, allProposals, leadActivities, la
           return (
             <div
               key={virtualItem.key}
+              data-index={virtualItem.index}
+              ref={rowVirtualizer.measureElement}
               style={{
                 position: 'absolute',
                 top: 0,
@@ -277,6 +301,7 @@ export default function Pipeline() {
     campaign: '',
     notes: '',
   });
+  const [rhuamUserId, setRhuamUserId] = useState<string | null>(null);
 
   // Filter state
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -295,6 +320,13 @@ export default function Pipeline() {
   useEffect(() => {
     loadStages();
     loadLeads();
+    // Busca o ID do Rhuam para usar como responsável padrão em novos leads
+    supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('email', 'rhuamcarlostr@gmail.com')
+      .single()
+      .then(({ data }) => { if (data) setRhuamUserId(data.id); });
   }, []);
 
   useEffect(() => {
@@ -328,8 +360,8 @@ export default function Pipeline() {
     setLoading(true);
     try {
       const [{ data: leadsData, error: leadsError }, { data: proposalsData, error: proposalsError }] = await Promise.all([
-        supabase.from('leads').select('*').neq('status', 'maturacao').order('score_total', { ascending: false }).order('created_at', { ascending: false }),
-        supabase.from('proposals').select('*')
+        supabase.from('leads').select('*').neq('status', 'maturacao').order('score_total', { ascending: false }).order('created_at', { ascending: false }).limit(2000),
+        supabase.from('proposals').select('*').limit(2000)
       ]);
       
       if (leadsError) throw leadsError;
@@ -431,6 +463,10 @@ export default function Pipeline() {
     }
   };
 
+  const handleMoveToStage = (leadId: string, stageKey: string) => {
+    updateLeadStatus(leadId, stageKey as LeadStatus);
+  };
+
   const handleDragStart = (leadId: string) => {
     setDraggedLead(leadId);
   };
@@ -467,7 +503,7 @@ export default function Pipeline() {
         setPendingStatusUpdate(null);
         setDealValue('');
       } else {
-        alert('Por favor, insira um valor válido');
+        notify.error('Por favor, insira um valor válido');
       }
     }
   };
@@ -479,7 +515,7 @@ export default function Pipeline() {
       setPendingStatusUpdate(null);
       setLossReason('');
     } else {
-      alert('Por favor, informe o motivo da perda');
+      notify.error('Por favor, informe o motivo da perda');
     }
   };
 
@@ -655,11 +691,11 @@ export default function Pipeline() {
       });
 
       setIsEditingLead(false);
-      alert('Lead atualizado com sucesso!');
+      notify.success('Lead atualizado com sucesso!');
       loadLeads(); // Refresh data
     } catch (error) {
       console.error('Error updating lead:', error);
-      alert('Erro ao atualizar lead');
+      notify.error('Erro ao atualizar lead');
     }
   };
 
@@ -667,7 +703,7 @@ export default function Pipeline() {
     e.preventDefault();
 
     if (!newLead.full_name || !newLead.phone) {
-      alert('Nome e telefone são obrigatórios');
+      notify.error('Nome e telefone são obrigatórios');
       return;
     }
 
@@ -680,7 +716,7 @@ export default function Pipeline() {
           source: newLead.source,
           campaign: newLead.campaign,
           notes: newLead.notes,
-          owner_user_id: profile?.id,
+          owner_user_id: rhuamUserId || profile?.id,
           status: 'novo',
         })
         .select()
@@ -711,7 +747,7 @@ export default function Pipeline() {
       loadLeads();
     } catch (error) {
       console.error('Error creating lead:', error);
-      alert('Erro ao criar lead. Tente novamente.');
+      notify.error('Erro ao criar lead. Tente novamente.');
     }
   };
 
@@ -1268,7 +1304,7 @@ export default function Pipeline() {
         </div>
       )}
 
-      <div className="flex gap-4 overflow-x-auto pb-6 px-6">
+      <div className="flex gap-4 overflow-x-auto pb-6 px-2 md:px-6 snap-x snap-mandatory" style={{ minHeight: 'calc(100vh - 200px)', alignItems: 'flex-start' }}>
         {stages.map((stage) => {
           // Apply filters
           let columnLeads = leads.filter((lead) => lead.status === stage.stage_key);
@@ -1297,7 +1333,7 @@ export default function Pipeline() {
           return (
             <div
               key={stage.id}
-              className={`flex-shrink-0 w-[340px] transition-all ${
+              className={`flex-shrink-0 w-[85vw] md:w-[340px] snap-center transition-all ${
                 draggedLead && leads.find(l => l.id === draggedLead)?.status !== stage.stage_key
                   ? 'ring-2 ring-blue-400 ring-opacity-50 rounded-lg'
                   : ''
@@ -1340,6 +1376,8 @@ export default function Pipeline() {
                 formatCurrency={formatCurrency}
                 formatDate={formatDate}
                 formatRelativeTime={formatRelativeTime}
+                allStages={stages}
+                onMoveToStage={handleMoveToStage}
               />
             </div>
           );

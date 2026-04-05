@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { Calendar, Clock, MapPin, Phone, Mail, User, Plus, X, CheckCircle, AlertCircle, Circle, List, ChevronLeft, ChevronRight, Edit, Eye } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import ActivityModal from '../components/ActivityModal';
+import { notify } from '../lib/toast';
 
 type ActivityType = 'meeting' | 'call' | 'task' | 'email' | 'follow_up';
 type ActivityStatus = 'scheduled' | 'completed' | 'cancelled' | 'overdue';
@@ -179,7 +180,7 @@ export default function Agenda() {
 
     if (error) {
       console.error('Error updating activity:', error);
-      alert('Erro ao atualizar atividade');
+      notify.error('Erro ao atualizar atividade');
     } else {
       setShowEditModal(false);
       setSelectedActivity(null);
@@ -410,7 +411,8 @@ export default function Agenda() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
+          <div className="min-w-[560px]">
           <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
             {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
               <div key={day} className="p-3 text-center text-sm font-semibold text-gray-700">
@@ -421,16 +423,17 @@ export default function Agenda() {
           <div className="grid grid-cols-7">
             {days}
           </div>
+          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 md:p-6 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Agenda</h1>
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900">Agenda</h1>
           <p className="text-gray-600 mt-1">Gerencie todas as atividades agendadas</p>
         </div>
         <div className="flex items-center gap-3">

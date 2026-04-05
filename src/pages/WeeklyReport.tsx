@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Calendar, TrendingDown, Target, AlertTriangle } from 'lucide-react';
+import { Calendar, TrendingDown, Target, AlertTriangle, ArrowDown } from 'lucide-react';
 
 export default function WeeklyReport() {
   const [reportData, setReportData] = useState<any>(null);
@@ -39,7 +39,7 @@ export default function WeeklyReport() {
       endOfWeek.setHours(23, 59, 59, 999);
       const endOfWeekISO = endOfWeek.toISOString();
 
-      const { data: leads } = await (supabase.from('leads').select('*') as any);
+      const { data: leads } = await (supabase.from('leads').select('*').limit(5000) as any);
       const { data: meetingsRaw } = await (supabase.from('meetings').select('*').gte('scheduled_at', startOfWeekISO).lte('scheduled_at', endOfWeekISO) as any);
       const { data: scheduledMeetingsRaw } = await (supabase.from('scheduled_activities').select('*').eq('activity_type', 'meeting').gte('scheduled_at', startOfWeekISO).lte('scheduled_at', endOfWeekISO) as any);
       const meetings = [
@@ -82,45 +82,66 @@ export default function WeeklyReport() {
       const conversaoMeetingToProposal = realizadas > 0 ? (propostas / realizadas) * 100 : 0;
       const conversaoProposalToWon = propostas > 0 ? (totalGanhos / propostas) * 100 : 0;
 
+      // Funil cumulativo (leads do período, contagem cumulativa por etapa)
+      const periodLeads = leads?.filter((l: any) => l.created_at >= startOfWeekISO && l.created_at <= endOfWeekISO) || [];
+      const hasStatus = (statuses: string[]) => periodLeads.filter((l: any) => statuses.includes(l.status)).length;
+
+      const funnelStages = [
+        { label: 'Leads Captados',   count: totalLeads },
+        { label: 'Qualificados',     count: hasStatus(['qualificado','agendado','compareceu','no_show','proposta_enviada','ganho','perdido']) },
+        { label: 'Agendamentos',     count: hasStatus(['agendado','compareceu','no_show','proposta_enviada','ganho','perdido']) },
+        { label: 'Comparecidas',     count: hasStatus(['compareceu','proposta_enviada','ganho','perdido']) },
+        { label: 'Proposta na Mesa', count: hasStatus(['proposta_enviada','ganho','perdido']) },
+        { label: 'Negócio Fechado',  count: hasStatus(['ganho']) },
+      ];
+
       // Buscar leads parados via view
       const { data: staleLeads } = await supabase.from('vw_stale_strategic_leads').select('*').limit(5);
 
-      const gargalo =
-        conversaoLeadToMeeting < 20 ? 'Lead → Agendamento (Baixa conversão na triagem)' :
-        conversaoMeetingToProposal < 50 ? 'Reunião → Proposta (Gargalo na apresentação de valor)' :
-        conversaoProposalToWon < 30 ? 'Proposta → Fechamento (Dificuldade no fechamento/negociação)' :
-        (staleLeads && staleLeads.length > 0) ? 'Velocidade (Leads estratégicos sem contato > 24h)' :
-        'Nenhum gargalo crítico';
+      const gargaloInfo: { titulo: string; descricao: string } =
+        conversaoLeadToMeeting < 20
+          ? {
+              titulo: 'Triagem → Agendamento',
+              descricao: `Apenas ${conversaoLeadToMeeting.toFixed(1)}% dos leads qualificados chegam a agendar uma reunião. O benchmark saudável é ≥ 30%. Possíveis causas: abordagem inicial fraca, demora no primeiro contato ou script de triagem sem urgência. Ação: revisar o primeiro contato e reduzir o tempo entre o lead chegar e o WhatsApp ser enviado.`,
+            }
+          : conversaoMeetingToProposal < 50
+          ? {
+              titulo: 'Reunião → Proposta',
+              descricao: `Apenas ${conversaoMeetingToProposal.toFixed(1)}% das reuniões realizadas resultam em proposta. O benchmark saudável é ≥ 60%. Possíveis causas: reunião sem fechamento claro, cliente não percebeu valor suficiente ou consultor não trouxe proposta na mesma sessão. Ação: treinar fechamento da reunião e sempre sair com próximo passo definido.`,
+            }
+          : conversaoProposalToWon < 30
+          ? {
+              titulo: 'Proposta → Fechamento',
+              descricao: `Apenas ${conversaoProposalToWon.toFixed(1)}% das propostas apresentadas resultam em contrato assinado. O benchmark saudável é ≥ 40%. Possíveis causas: preço percebido como alto, cliente sem urgência real ou proposta enviada sem follow-up estruturado. Ação: analisar motivos de perda e implementar sequência de follow-up pós-proposta.`,
+            }
+          : staleLeads && staleLeads.length > 0
+          ? {
+              titulo: 'Velocidade de Contato',
+              descricao: `${staleLeads.length} lead(s) estratégico(s) estão sem contato há mais de 24h. Leads com score alto perdem temperatura rapidamente — a janela ideal de retorno é de até 1h após o interesse demonstrado. Ação: contato imediato com esses leads, priorizando os de maior score.`,
+            }
+          : {
+              titulo: 'Nenhum gargalo crítico',
+              descricao: 'O funil está operando dentro dos benchmarks esperados. Continue monitorando a cadência de follow-ups e a qualidade dos agendamentos.',
+            };
 
       const acoes = [];
-      
-      // Lógica Dinâmica baseada em Leads Parados
-      if (staleLeads && staleLeads.length > 0) {
+      if (staleLeads && staleLeads.length > 0)
         acoes.push(`Retomar contato imediato com ${staleLeads.length} leads estratégicos parados há mais de 24h`);
-      }
-
-      // Lógica baseada em Taxas
-      if (conversaoLeadToMeeting < 20) {
+      if (conversaoLeadToMeeting < 20)
         acoes.push('Revisar script de triagem: leads não estão vendo valor no agendamento');
-      }
-      if (noShow > agendados * 0.3) {
+      if (noShow > agendados * 0.3)
         acoes.push('Ativar lembretes automáticos: show rate está abaixo do benchmark (70%)');
-      }
-      if (conversaoProposalToWon < 30 && perdidos > 0) {
+      if (conversaoProposalToWon < 30 && perdidos > 0)
         acoes.push('Analisar motivos de perda: taxa de fechamento de propostas está baixa');
-      }
-      
-      // Lógica de Priorização
-      if (estrategicos > 0 && agendados < estrategicos * 0.5) {
+      if (estrategicos > 0 && agendados < estrategicos * 0.5)
         acoes.push('Foco Total: Menos de 50% dos leads estratégicos possuem reunião agendada');
-      }
-
       if (acoes.length === 0) {
         acoes.push('Manter cadência: processo está saudável e dentro dos benchmarks');
         acoes.push('Explorar novos canais: capacidade ociosa detectada no funil');
       }
 
       setReportData({
+        funnelStages,
         totalLeads,
         qualificados,
         estrategicos,
@@ -135,7 +156,7 @@ export default function WeeklyReport() {
         conversaoLeadToMeeting,
         conversaoMeetingToProposal,
         conversaoProposalToWon,
-        gargalo,
+        gargaloInfo,
         acoes: acoes.slice(0, 3),
         staleLeadsCount: staleLeads?.length || 0
       });
@@ -158,8 +179,8 @@ export default function WeeklyReport() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Relatório Semanal</h1>
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+        <h1 className="text-xl md:text-3xl font-bold text-gray-900">Relatório Semanal</h1>
         <div className="flex gap-4 items-center">
           <div className="flex items-center gap-2">
             <Calendar className="w-5 h-5 text-gray-400" />
@@ -220,59 +241,50 @@ export default function WeeklyReport() {
           )}
 
           <div className="bg-gray-50 rounded-lg p-6 my-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2">
               <Target className="w-5 h-5" />
               Funil de Conversão
             </h3>
-            <div className="space-y-3">
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-700">Lead → Agendamento</span>
-                  <span className="font-medium text-gray-900">{reportData.conversaoLeadToMeeting.toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${reportData.conversaoLeadToMeeting < 20 ? 'bg-red-500' : 'bg-green-500'}`}
-                    style={{ width: `${Math.min(reportData.conversaoLeadToMeeting, 100)}%` }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-700">Reunião → Proposta</span>
-                  <span className="font-medium text-gray-900">{reportData.conversaoMeetingToProposal.toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${reportData.conversaoMeetingToProposal < 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                    style={{ width: `${Math.min(reportData.conversaoMeetingToProposal, 100)}%` }}
-                  />
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-700">Proposta → Fechamento</span>
-                  <span className="font-medium text-gray-900">{reportData.conversaoProposalToWon.toFixed(1)}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${reportData.conversaoProposalToWon < 30 ? 'bg-red-500' : 'bg-green-500'}`}
-                    style={{ width: `${Math.min(reportData.conversaoProposalToWon, 100)}%` }}
-                  />
-                </div>
-              </div>
+            <div className="space-y-1">
+              {reportData.funnelStages.map((stage: { label: string; count: number }, index: number) => {
+                const prev = index > 0 ? reportData.funnelStages[index - 1] : null;
+                const convRate = prev && prev.count > 0 ? (stage.count / prev.count) * 100 : null;
+                const maxCount = reportData.funnelStages[0]?.count || 1;
+                const barWidth = maxCount > 0 ? Math.max((stage.count / maxCount) * 100, 2) : 2;
+                const isLow = convRate !== null && convRate < 40;
+                return (
+                  <div key={stage.label}>
+                    {index > 0 && (
+                      <div className="flex items-center gap-2 py-1 pl-4">
+                        <ArrowDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <span className={`text-xs font-semibold ${isLow ? 'text-red-600' : 'text-green-600'}`}>
+                          {convRate !== null ? `${convRate.toFixed(1)}% converteram` : '—'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-gray-600 w-36 flex-shrink-0">{stage.label}</span>
+                      <div className="flex-1 bg-gray-200 rounded-full h-5 relative">
+                        <div
+                          className={`h-5 rounded-full transition-all ${index === reportData.funnelStages.length - 1 ? 'bg-green-500' : 'bg-blue-500'}`}
+                          style={{ width: `${barWidth}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-bold text-gray-900 w-8 text-right flex-shrink-0">{stage.count}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 my-6">
-            <h3 className="text-lg font-semibold text-yellow-900 mb-3 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-yellow-900 mb-2 flex items-center gap-2">
               <TrendingDown className="w-5 h-5" />
               Gargalo Principal
             </h3>
-            <p className="text-yellow-800 font-medium">{reportData.gargalo}</p>
-            <p className="text-sm text-yellow-700 mt-2">
-              Esta é a etapa com maior queda de conversão que requer atenção imediata.
-            </p>
+            <p className="text-yellow-900 font-bold mb-2">{reportData.gargaloInfo.titulo}</p>
+            <p className="text-yellow-800 text-sm leading-relaxed">{reportData.gargaloInfo.descricao}</p>
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 my-6">

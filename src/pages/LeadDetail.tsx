@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, BarChart3, CheckCircle, Tag as TagIcon, Plus, X, CreditCard as Edit, Save } from 'lucide-react';
+import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, BarChart3, CheckCircle, Tag as TagIcon, Plus, X, CreditCard as Edit, Save, Scale, Pencil } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 import { notify } from '../lib/toast';
 import WhatsAppChat from '../components/WhatsAppChat';
 import Breadcrumbs from '../components/Breadcrumbs';
 import CustomFieldsViewer from '../components/CustomFieldsViewer';
+import ActivityModal from '../components/ActivityModal';
 
 type Lead = Database['public']['Tables']['leads']['Row'];
 type LeadAnswer = Database['public']['Tables']['lead_answers']['Row'];
@@ -32,6 +33,7 @@ interface PipelineStage {
 export default function LeadDetail() {
   const id = window.location.pathname.split('/')[2];
   const { profile } = useAuth();
+  const isJuridico = profile?.role === 'juridico';
   const [lead, setLead] = useState<Lead | null>(null);
   const [answers, setAnswers] = useState<LeadAnswer[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -70,21 +72,25 @@ export default function LeadDetail() {
     especialista_real: '',
     estagio_real: '',
     valor_bens_real: '',
+    tipo_bens_real: '',
     decisor: '',
-    proximo_passo: '',
     notas_triagem: '',
     timeline_real: '',
   });
 
   const getMetaAnswer = (key: string) => {
-    const sorted = [...answers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    let ans = null;
-    if (key === 'decisao') ans = sorted.find(a => ['decisao', 'stage'].includes(a.question_key));
-    else if (key === 'urgencia') ans = sorted.find(a => ['urgencia', 'urgency_now'].includes(a.question_key));
-    else if (key === 'bens') ans = sorted.find(a => ['bens', 'assets_range'].includes(a.question_key));
-    else if (key === 'renda') ans = sorted.find(a => ['renda', 'family_income_range'].includes(a.question_key));
-    else if (key === 'estagio') ans = sorted.find(a => ['estagio', 'estagio_juridico'].includes(a.question_key));
-    else ans = sorted.find(a => a.question_key === key);
+    const metaAnswers = answers.filter(a => a.source === 'meta_form');
+    const keyMap: Record<string, string> = {
+      decisao: 'decisao_real',
+      urgencia: 'urgencia_real',
+      relacionamento: 'conflito_real',
+      bens: 'valor_bens_real',
+      filhos: 'filhos_menores_real',
+      renda: 'renda_real',
+      estagio: 'estagio',
+    };
+    const resolvedKey = keyMap[key] ?? key;
+    const ans = metaAnswers.find(a => a.question_key === resolvedKey);
     return ans?.answer_value || undefined;
   };
 
@@ -98,6 +104,12 @@ export default function LeadDetail() {
     value: '',
     payment_terms: '',
   });
+  const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
+  const [editProposalForm, setEditProposalForm] = useState({
+    presented_at: '',
+    value: '',
+    payment_terms: '',
+  });
   const [newScheduledActivity, setNewScheduledActivity] = useState({
     activity_type: 'call' as const,
     title: '',
@@ -106,6 +118,7 @@ export default function LeadDetail() {
     priority: 'medium' as const,
     duration_minutes: '',
   });
+  const [editingActivity, setEditingActivity] = useState<ScheduledActivity | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -205,21 +218,22 @@ export default function LeadDetail() {
         { lead_id: id, question_key: 'urgencia_real', answer_value: validationForm.urgencia_real, source: 'triagem_humana' as const },
         { lead_id: id, question_key: 'conflito_real', answer_value: validationForm.conflito_real, source: 'triagem_humana' as const },
         { lead_id: id, question_key: 'valor_bens_real', answer_value: validationForm.valor_bens_real, source: 'triagem_humana' as const },
+        { lead_id: id, question_key: 'tipo_bens_real', answer_value: validationForm.tipo_bens_real, source: 'triagem_humana' as const },
         { lead_id: id, question_key: 'renda_real', answer_value: validationForm.renda_real, source: 'triagem_humana' as const },
         { lead_id: id, question_key: 'filhos_menores_real', answer_value: validationForm.filhos_menores_real, source: 'triagem_humana' as const },
         { lead_id: id, question_key: 'especialista_real', answer_value: validationForm.especialista_real, source: 'triagem_humana' as const },
         { lead_id: id, question_key: 'estagio_real', answer_value: validationForm.estagio_real, source: 'triagem_humana' as const },
-        { lead_id: id, question_key: 'proximo_passo', answer_value: validationForm.proximo_passo, source: 'triagem_humana' as const },
         { lead_id: id, question_key: 'timeline_real', answer_value: validationForm.timeline_real, source: 'triagem_humana' as const },
       ].filter(a => a.answer_value);
 
       if (validationAnswers.length === 0 && !validationForm.notas_triagem) {
-        alert('Preencha pelo menos um campo antes de salvar.');
+        notify.error('Preencha pelo menos um campo antes de salvar.');
         return;
       }
 
       if (validationAnswers.length > 0) {
-        const { error } = await supabase.from('lead_answers').insert(validationAnswers);
+        const { error } = await supabase.from('lead_answers')
+          .upsert(validationAnswers, { onConflict: 'lead_id,question_key' });
         if (error) throw error;
       }
 
@@ -227,13 +241,12 @@ export default function LeadDetail() {
       const validatorName = profile?.full_name || profile?.email || 'Vendedor';
       const timestamp = new Date().toLocaleString('pt-BR');
       const notesText = validationForm.notas_triagem ? `\n\nNotas: ${validationForm.notas_triagem}` : '';
-      const proximoPassoText = validationForm.proximo_passo ? `\nPróximo Passo: ${validationForm.proximo_passo}` : '';
       await supabase.from('activities').insert({
         lead_id: id,
         type: 'note',
         channel: 'internal',
         user_id: profile?.id,
-        content: `✅ Validação Humana registrada por ${validatorName} em ${timestamp}.${proximoPassoText}${notesText}`,
+        content: `✅ Validação Humana registrada por ${validatorName} em ${timestamp}.${notesText}`,
       });
 
       await supabase.rpc('calculate_lead_score', { p_lead_id: id });
@@ -241,7 +254,7 @@ export default function LeadDetail() {
       setValidationForm({ 
         decisao_real: '', urgencia_real: '', conflito_real: '', renda_real: '',
         filhos_menores_real: '', especialista_real: '', estagio_real: '', valor_bens_real: '',
-        decisor: '', proximo_passo: '', notas_triagem: '', timeline_real: '' 
+        tipo_bens_real: '', decisor: '', notas_triagem: '', timeline_real: ''
       });
       loadLeadData();
       notify.success('Validação salva com sucesso!');
@@ -277,7 +290,7 @@ export default function LeadDetail() {
     try {
       const { error } = await supabase.from('meetings').insert({
         lead_id: id,
-        scheduled_at: newMeeting.scheduled_at,
+        scheduled_at: new Date(newMeeting.scheduled_at).toISOString(),
         notes: newMeeting.notes,
         responsible_user_id: profile?.id,
         status: 'scheduled',
@@ -348,7 +361,7 @@ export default function LeadDetail() {
         activity_type: newScheduledActivity.activity_type,
         title: newScheduledActivity.title,
         description: newScheduledActivity.description || null,
-        scheduled_at: newScheduledActivity.scheduled_at,
+        scheduled_at: new Date(newScheduledActivity.scheduled_at).toISOString(),
         priority: newScheduledActivity.priority,
         duration_minutes: newScheduledActivity.duration_minutes ? parseInt(newScheduledActivity.duration_minutes) : null,
         status: 'scheduled',
@@ -434,6 +447,27 @@ export default function LeadDetail() {
       notify.success(status === 'won' ? 'Proposta ganha!' : 'Proposta perdida registrada.');
     } catch (error) {
       console.error('Error updating proposal:', error);
+    }
+  };
+
+  const saveEditProposal = async () => {
+    if (!editingProposalId || !editProposalForm.presented_at || !editProposalForm.value) return;
+    try {
+      const { error } = await supabase
+        .from('proposals')
+        .update({
+          presented_at: editProposalForm.presented_at,
+          value: parseFloat(editProposalForm.value),
+          payment_terms: editProposalForm.payment_terms || null,
+        })
+        .eq('id', editingProposalId);
+      if (error) throw error;
+      setEditingProposalId(null);
+      loadLeadData();
+      notify.success('Proposta atualizada!');
+    } catch (error) {
+      console.error('Error updating proposal:', error);
+      notify.error('Erro ao atualizar proposta');
     }
   };
 
@@ -575,6 +609,7 @@ export default function LeadDetail() {
     .reduce((sum, p) => sum + (p.value || 0), 0);
 
   return (
+    <>
     <div className="space-y-6">
       <Breadcrumbs
         items={[
@@ -583,16 +618,25 @@ export default function LeadDetail() {
         ]}
       />
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">{lead.full_name}</h1>
-        <button
-          onClick={() => setIsEditing(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Edit className="w-4 h-4" />
-          Editar Lead
-        </button>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <h1 className="text-xl md:text-3xl font-bold text-gray-900">{lead.full_name}</h1>
+        {!isJuridico && (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors self-start md:self-auto"
+          >
+            <Edit className="w-4 h-4" />
+            Editar Lead
+          </button>
+        )}
       </div>
+
+      {isJuridico && (
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center gap-2 text-sm text-purple-800">
+          <Scale className="w-4 h-4 flex-shrink-0" />
+          Modo visualização — Jurídico pode registrar apenas notas neste cliente.
+        </div>
+      )}
 
       {/* Modal de Edição */}
       {isEditing && (
@@ -1026,7 +1070,7 @@ export default function LeadDetail() {
 
       <div className="bg-white rounded-lg shadow">
         <div className="border-b border-gray-200">
-          <nav className="flex">
+          <nav className="flex overflow-x-auto whitespace-nowrap scrollbar-none">
             <button
               onClick={() => setActiveTab('timeline')}
               className={`px-6 py-4 text-sm font-medium ${
@@ -1068,10 +1112,8 @@ export default function LeadDetail() {
               Atividades Agendadas ({scheduledActivities.filter(a => a.status === 'scheduled').length})
             </button>
             <button
-              onClick={() => setActiveTab('whatsapp')}
-              className={`px-6 py-4 text-sm font-medium ${
-                activeTab === 'whatsapp' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600 hover:text-gray-900'
-              }`}
+              onClick={() => { window.location.href = `/whatsapp-conversations?lead=${id}`; }}
+              className="px-6 py-4 text-sm font-medium text-gray-600 hover:text-green-600 hover:border-b-2 hover:border-green-500 transition-colors"
             >
               WhatsApp
             </button>
@@ -1083,17 +1125,20 @@ export default function LeadDetail() {
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Adicionar Atividade</h3>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
+                <div className="flex flex-col gap-2">
+                  <textarea
                     value={newActivity}
                     onChange={(e) => setNewActivity(e.target.value)}
-                    placeholder="Descrição da atividade..."
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addActivity();
+                    }}
+                    placeholder="Descrição da atividade... (Ctrl+Enter para salvar)"
+                    rows={4}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
                   />
                   <button
                     onClick={addActivity}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="self-end px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     Adicionar
                   </button>
@@ -1172,28 +1217,16 @@ export default function LeadDetail() {
                   <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Respostas do Formulário</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 rounded-lg p-4">
                     {[
-                      { label: 'Decisão', keys: ['decisao', 'stage'] },
-                      { label: 'Urgência', keys: ['urgencia', 'urgency_now'] },
-                      { label: 'Relacionamento', keys: ['relacionamento'] },
-                      { label: 'Patrimônio', keys: ['bens', 'assets_range'] },
-                      { label: 'Renda Familiar', keys: ['renda', 'family_income_range'] },
-                      { label: 'Filhos Menores', keys: ['filhos'] },
-                      { label: 'Estágio Jurídico', keys: ['estagio', 'estagio_juridico'] },
+                      { label: 'Decisão', key: 'decisao_real' },
+                      { label: 'Urgência', key: 'urgencia_real' },
+                      { label: 'Relacionamento', key: 'conflito_real' },
+                      { label: 'Patrimônio', key: 'valor_bens_real' },
+                      { label: 'Filhos Menores', key: 'filhos_menores_real' },
+                      { label: 'Estágio', key: 'estagio' },
                     ].map(field => {
-                      let val = null;
-                      if (field.label === 'Filhos Menores') {
-                        const ans = answers.find(a => field.keys.includes(a.question_key));
-                        val = ans?.answer_value || undefined;
-                      } else {
-                        for (const key of field.keys) {
-                          const ans = answers.find(a => a.question_key === key);
-                          if (ans?.answer_value) {
-                            val = ans.answer_value;
-                            break;
-                          }
-                        }
-                      }
-                      
+                      const formAnswers = answers.filter(a => a.source === 'meta_form');
+                      const ans = formAnswers.find(a => a.question_key === field.key);
+                      const val = ans?.answer_value || null;
                       return (
                         <div key={field.label} className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
                           <div className="flex justify-between items-start mb-1">
@@ -1212,24 +1245,17 @@ export default function LeadDetail() {
                   <h4 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Validação Humana</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-indigo-50/50 rounded-lg p-4 border border-indigo-100/50">
                     {[
-                      { label: 'Decisão', keys: ['decisao_real'] },
-                      { label: 'Urgência', keys: ['urgencia_real'] },
-                      { label: 'Relacionamento', keys: ['conflito_real'] },
-                      { label: 'Patrimônio', keys: ['valor_bens_real'] },
-                      { label: 'Renda Familiar', keys: ['renda_real'] },
-                      { label: 'Filhos Menores', keys: ['filhos_menores_real'] },
-                      { label: 'Estágio Jurídico', keys: ['estagio_real'] },
+                      { label: 'Decisão', key: 'decisao_real' },
+                      { label: 'Urgência', key: 'urgencia_real' },
+                      { label: 'Relacionamento', key: 'conflito_real' },
+                      { label: 'Patrimônio', key: 'valor_bens_real' },
+                      { label: 'Renda Familiar', key: 'renda_real' },
+                      { label: 'Filhos Menores', key: 'filhos_menores_real' },
+                      { label: 'Estágio Jurídico', key: 'estagio_real' },
                     ].map(field => {
-                      let val = null;
-                      for (const key of field.keys) {
-                        // Get latest by sorting descending
-                        const ans = [...answers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).find(a => a.question_key === key);
-                        if (ans?.answer_value) {
-                          val = ans.answer_value;
-                          break;
-                        }
-                      }
-                      
+                      const humanAnswers = answers.filter(a => a.source === 'triagem_humana');
+                      const ans = [...humanAnswers].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).find(a => a.question_key === field.key);
+                      const val = ans?.answer_value || null;
                       return (
                         <div key={field.label} className="bg-white border border-indigo-100 rounded-lg p-3 shadow-sm">
                           <div className="flex justify-between items-start mb-1">
@@ -1417,6 +1443,43 @@ export default function LeadDetail() {
                           </select>
                         </td>
                       </tr>
+                      {/* Tipo de Bens */}
+                      <tr>
+                        <td className="px-6 py-4"></td>
+                        <td className="px-6 py-4 text-sm text-gray-400 italic font-medium">{getMetaAnswer('assets_types') || 'Não informado'}</td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-1.5">
+                            {[
+                              { value: 'imovel_proprio', label: 'Imóvel próprio (quitado)' },
+                              { value: 'imovel_financiado', label: 'Imóvel financiado' },
+                              { value: 'empresa_cotas', label: 'Empresa / cotas societárias' },
+                              { value: 'veiculo', label: 'Veículos' },
+                              { value: 'investimentos', label: 'Investimentos / ações' },
+                              { value: 'previdencia', label: 'Previdência privada' },
+                              { value: 'dividas', label: 'Dívidas' },
+                            ].map(opt => {
+                              const current = (validationForm.tipo_bens_real || '').split(',').filter(Boolean);
+                              const checked = current.includes(opt.value);
+                              return (
+                                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={e => {
+                                      const updated = e.target.checked
+                                        ? [...current, opt.value]
+                                        : current.filter(v => v !== opt.value);
+                                      setValidationForm({...validationForm, tipo_bens_real: updated.join(',')});
+                                    }}
+                                    className="w-3.5 h-3.5 text-indigo-600 rounded cursor-pointer"
+                                  />
+                                  <span className="text-xs font-medium text-gray-700">{opt.label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      </tr>
                       {/* Renda Familiar */}
                       <tr>
                         <td className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wide">Renda Familiar</td>
@@ -1475,22 +1538,6 @@ export default function LeadDetail() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Próximo Passo Estratégico</label>
-                    <select 
-                      className="w-full px-5 py-4 border border-gray-200 rounded-2xl text-sm font-bold text-gray-700 bg-gray-50 focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all outline-none"
-                      value={validationForm.proximo_passo}
-                      onChange={e => setValidationForm({...validationForm, proximo_passo: e.target.value})}
-                    >
-                      <option value="">Selecione o melhor caminho...</option>
-                      <option value="agendar_reuniao">🗓️ Agendar Reunião Imediata</option>
-                      <option value="enviar_proposta">📨 Enviar Proposta de Honorários</option>
-                      <option value="aguardar_documentos">📂 Aguardar Envio de Documentos</option>
-                      <option value="nutricao_ativa">🔄 Manter em Nutrição / Follow-up</option>
-                      <option value="descartar">❌ Descartar Lead</option>
-                    </select>
-                  </div>
-
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Prazos e Expectativa</label>
                     <select 
@@ -1678,57 +1725,127 @@ export default function LeadDetail() {
                 <div className="space-y-4">
                   {proposals.map((proposal) => (
                     <div key={proposal.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="w-5 h-5 text-gray-400" />
-                          <span className="font-bold text-gray-900">R$ {proposal.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      {editingProposalId === proposal.id ? (
+                        /* ── Modo edição inline ── */
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Data de Apresentação</label>
+                            <input
+                              type="datetime-local"
+                              value={editProposalForm.presented_at}
+                              onChange={(e) => setEditProposalForm({ ...editProposalForm, presented_at: e.target.value })}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Valor (R$)</label>
+                            <input
+                              type="number"
+                              value={editProposalForm.value}
+                              onChange={(e) => setEditProposalForm({ ...editProposalForm, value: e.target.value })}
+                              step="0.01"
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">Condições de Pagamento</label>
+                            <textarea
+                              value={editProposalForm.payment_terms}
+                              onChange={(e) => setEditProposalForm({ ...editProposalForm, payment_terms: e.target.value })}
+                              rows={2}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={saveEditProposal}
+                              className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Salvar
+                            </button>
+                            <button
+                              onClick={() => setEditingProposalId(null)}
+                              className="px-4 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
                         </div>
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          proposal.status === 'won' ? 'bg-green-100 text-green-800' :
-                          proposal.status === 'lost' ? 'bg-red-100 text-red-800' :
-                          'bg-blue-100 text-blue-800'
-                        }`}>
-                          {proposal.status}
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-600 mb-2">
-                        Apresentada em: {formatDateTime(proposal.presented_at)}
-                      </div>
-                      {proposal.payment_terms && (
-                        <div className="text-sm text-gray-700 mb-2">
-                          <span className="font-medium">Condições:</span> {proposal.payment_terms}
-                        </div>
-                      )}
-                      {proposal.loss_reason && (
-                        <div className="text-sm text-red-600 mb-2">
-                          <span className="font-medium">Motivo da perda:</span> {proposal.loss_reason}
-                        </div>
-                      )}
-                      {proposal.status === 'open' && (profile?.role === 'admin' || profile?.role === 'comercial') && (
-                        <div className="flex gap-2 mt-3">
-                          <button
-                            onClick={() => updateProposalStatus(proposal.id, 'won')}
-                            className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
-                          >
-                            Ganhar
-                          </button>
-                          <button
-                            onClick={() => {
-                              const reason = prompt('Explique o motivo da perda (opcional):');
-                              const categories = ['preco', 'concorrente', 'reconciliacao', 'timing', 'outro'];
-                              const category = prompt(`Escolha a categoria:\n${categories.join(', ')}`);
-                              
-                              if (category && categories.includes(category.toLowerCase())) {
-                                updateProposalStatus(proposal.id, 'lost', reason || undefined, category.toLowerCase());
-                              } else {
-                                notify.error('Categoria inválida. Use: preco, concorrente, reconciliacao, timing ou outro');
-                              }
-                            }}
-                            className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
-                          >
-                            Perder
-                          </button>
-                        </div>
+                      ) : (
+                        /* ── Modo visualização ── */
+                        <>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <DollarSign className="w-5 h-5 text-gray-400" />
+                              <span className="font-bold text-gray-900">R$ {proposal.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                                proposal.status === 'won' ? 'bg-green-100 text-green-800' :
+                                proposal.status === 'lost' ? 'bg-red-100 text-red-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {proposal.status === 'won' ? 'Ganha' : proposal.status === 'lost' ? 'Perdida' : 'Aberta'}
+                              </span>
+                              {(profile?.role === 'admin' || profile?.role === 'comercial') && (
+                                <button
+                                  onClick={() => {
+                                    const dt = proposal.presented_at
+                                      ? proposal.presented_at.slice(0, 16)
+                                      : '';
+                                    setEditProposalForm({
+                                      presented_at: dt,
+                                      value: String(proposal.value),
+                                      payment_terms: proposal.payment_terms || '',
+                                    });
+                                    setEditingProposalId(proposal.id);
+                                  }}
+                                  className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-50 text-gray-600"
+                                >
+                                  Editar
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-sm text-gray-600 mb-2">
+                            Apresentada em: {formatDateTime(proposal.presented_at)}
+                          </div>
+                          {proposal.payment_terms && (
+                            <div className="text-sm text-gray-700 mb-2">
+                              <span className="font-medium">Condições:</span> {proposal.payment_terms}
+                            </div>
+                          )}
+                          {proposal.loss_reason && (
+                            <div className="text-sm text-red-600 mb-2">
+                              <span className="font-medium">Motivo da perda:</span> {proposal.loss_reason}
+                            </div>
+                          )}
+                          {proposal.status === 'open' && (profile?.role === 'admin' || profile?.role === 'comercial') && (
+                            <div className="flex gap-2 mt-3">
+                              <button
+                                onClick={() => updateProposalStatus(proposal.id, 'won')}
+                                className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700"
+                              >
+                                Ganhar
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const reason = prompt('Explique o motivo da perda (opcional):');
+                                  const categories = ['preco', 'concorrente', 'reconciliacao', 'timing', 'outro'];
+                                  const category = prompt(`Escolha a categoria:\n${categories.join(', ')}`);
+                                  if (category && categories.includes(category.toLowerCase())) {
+                                    updateProposalStatus(proposal.id, 'lost', reason || undefined, category.toLowerCase());
+                                  } else {
+                                    notify.error('Categoria inválida. Use: preco, concorrente, reconciliacao, timing ou outro');
+                                  }
+                                }}
+                                className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
+                              >
+                                Perder
+                              </button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   ))}
@@ -1900,6 +2017,13 @@ export default function LeadDetail() {
                             Concluir
                           </button>
                           <button
+                            onClick={() => setEditingActivity(activity)}
+                            className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >
+                            <Pencil className="w-4 h-4" />
+                            Editar
+                          </button>
+                          <button
                             onClick={() => updateScheduledActivityStatus(activity.id, 'cancelled')}
                             className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700"
                           >
@@ -1928,5 +2052,13 @@ export default function LeadDetail() {
       </div>
 
     </div>
+
+    <ActivityModal
+      isOpen={!!editingActivity}
+      onClose={() => setEditingActivity(null)}
+      onSuccess={() => { setEditingActivity(null); loadLeadData(); }}
+      activity={editingActivity}
+    />
+    </>
   );
 }

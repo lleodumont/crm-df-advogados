@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { UserPlus, Shield, Eye, Phone } from 'lucide-react';
+import { UserPlus, Shield, Eye, Phone, Scale } from 'lucide-react';
+import { notify } from '../lib/toast';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -48,39 +49,31 @@ export default function Users() {
     e.preventDefault();
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.full_name,
-          },
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          email: formData.email,
+          password: formData.password,
+          full_name: formData.full_name,
+          role: formData.role,
+        }),
       });
 
-      if (authError) throw authError;
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro ao criar usuário');
 
-      if (authData.user) {
-        const { error: profileError } = await supabase
-          .from('user_profiles')
-          .insert({
-            id: authData.user.id,
-            email: formData.email,
-            full_name: formData.full_name,
-            role: formData.role,
-            active: true,
-          });
-
-        if (profileError) throw profileError;
-
-        alert('Usuário criado com sucesso!');
-        setFormData({ email: '', password: '', full_name: '', role: 'atendimento' });
-        setShowForm(false);
-        loadUsers();
-      }
+      notify.success('Usuário criado com sucesso!');
+      setFormData({ email: '', password: '', full_name: '', role: 'atendimento' });
+      setShowForm(false);
+      loadUsers();
     } catch (error: any) {
       console.error('Error creating user:', error);
-      alert('Erro ao criar usuário: ' + error.message);
+      notify.error('Erro ao criar usuário: ' + error.message);
     }
   };
 
@@ -93,10 +86,10 @@ export default function Users() {
 
       if (error) throw error;
       loadUsers();
-      alert('Role atualizado com sucesso!');
+      notify.success('Role atualizado com sucesso!');
     } catch (error) {
       console.error('Error updating role:', error);
-      alert('Erro ao atualizar role');
+      notify.error('Erro ao atualizar role');
     }
   };
 
@@ -111,7 +104,7 @@ export default function Users() {
       loadUsers();
     } catch (error) {
       console.error('Error toggling user active:', error);
-      alert('Erro ao atualizar status');
+      notify.error('Erro ao atualizar status');
     }
   };
 
@@ -121,6 +114,8 @@ export default function Users() {
         return Shield;
       case 'comercial':
         return Phone;
+      case 'juridico':
+        return Scale;
       case 'atendimento':
         return UserPlus;
       case 'viewer':
@@ -136,6 +131,8 @@ export default function Users() {
         return 'bg-red-100 text-red-800';
       case 'comercial':
         return 'bg-blue-100 text-blue-800';
+      case 'juridico':
+        return 'bg-purple-100 text-purple-800';
       case 'atendimento':
         return 'bg-green-100 text-green-800';
       case 'viewer':
@@ -146,13 +143,14 @@ export default function Users() {
   };
 
   const getRoleLabel = (role: UserRole) => {
-    const labels = {
+    const labels: Record<string, string> = {
       admin: 'Administrador',
       comercial: 'Comercial',
+      juridico: 'Jurídico',
       atendimento: 'Atendimento',
       viewer: 'Visualizador',
     };
-    return labels[role as keyof typeof labels];
+    return labels[role] ?? role;
   };
 
   if (loading) {
@@ -166,7 +164,7 @@ export default function Users() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Usuários</h1>
+        <h1 className="text-xl md:text-3xl font-bold text-gray-900">Usuários</h1>
         <button
           onClick={() => setShowForm(!showForm)}
           className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -232,6 +230,7 @@ export default function Users() {
                 >
                   <option value="atendimento">Atendimento (SDR)</option>
                   <option value="comercial">Comercial (Advogada/Closer)</option>
+                  <option value="juridico">Jurídico</option>
                   <option value="viewer">Visualizador</option>
                   <option value="admin">Administrador</option>
                 </select>
@@ -263,12 +262,13 @@ export default function Users() {
           <li><strong>Admin:</strong> Acesso completo ao sistema, gerencia usuários</li>
           <li><strong>Comercial:</strong> Visualiza todos os leads, cria propostas, acessa valores</li>
           <li><strong>Atendimento:</strong> Gerencia leads, agenda reuniões, registra atividades</li>
+          <li><strong>Jurídico:</strong> Visualiza clientes ganhos, registra notas, acessa conversas WhatsApp dos casos</li>
           <li><strong>Visualizador:</strong> Somente leitura, acessa dashboard e relatórios</li>
         </ul>
       </div>
 
-      <div className="bg-white rounded-lg shadow">
-        <table className="min-w-full divide-y divide-gray-200">
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <table className="min-w-full min-w-[600px] divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -312,7 +312,7 @@ export default function Users() {
                         {getRoleLabel(user.role)}
                       </div>
                       <div className="absolute left-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 hidden group-hover:block z-50">
-                        {(['admin', 'comercial', 'atendimento', 'viewer'] as UserRole[]).map((role) => (
+                        {(['admin', 'comercial', 'juridico', 'atendimento', 'viewer'] as UserRole[]).map((role) => (
                           <button
                             key={role}
                             onClick={() => updateUserRole(user.id, role)}

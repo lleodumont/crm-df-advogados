@@ -1,7 +1,8 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Scale, LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers, TableProperties, AlertTriangle, BarChart2 } from 'lucide-react';
+import { Scale, LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers, TableProperties, AlertTriangle, BarChart2, LayoutTemplate, Zap } from 'lucide-react';
+
 
 interface LayoutProps {
   children: ReactNode;
@@ -22,24 +23,66 @@ export default function Layout({ children }: LayoutProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const navItems = [
-    { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/leads', icon: Users, label: 'Leads' },
-    { href: '/whatsapp-conversations', icon: MessageCircle, label: 'Conversas' },
-    { href: '/pipeline', icon: GitBranch, label: 'Pipeline' },
-    { href: '/agenda', icon: Calendar, label: 'Agenda' },
-    { href: '/tags', icon: Tag, label: 'Etiquetas' },
-    { href: '/stages', icon: Layers, label: 'Etapas' },
-    { href: '/instructions', icon: BookOpen, label: 'Instruções' },
-    { href: '/report', icon: FileText, label: 'Relatório Semanal' },
-    { href: '/attendance-report', icon: BarChart2, label: 'Atendimentos' },
-    { href: '/leads/import', icon: Upload, label: 'Importar Leads' },
-    ...(profile?.role === 'admin' || profile?.role === 'manager' ? [{ href: '/whatsapp-settings', icon: MessageCircle, label: 'Config WhatsApp' }] : []),
-    ...(profile?.role === 'admin' ? [
-      { href: '/custom-fields', icon: TableProperties, label: 'Campos Per.' },
-      { href: '/users', icon: UserCog, label: 'Usuários' }
-    ] : []),
-  ];
+  const isAdmin = profile?.role === 'admin';
+  const isComercial = profile?.role === 'comercial';
+  const isJuridico = profile?.role === 'juridico';
+  const isAtendimento = profile?.role === 'atendimento';
+
+  const navItems = isJuridico
+    ? [
+        { href: '/juridico', icon: Scale, label: 'Jurídico' },
+        { href: '/whatsapp-conversations', icon: MessageCircle, label: 'Conversas' },
+      ]
+    : [
+        ...(isAdmin || isComercial || isAtendimento || profile?.role === 'viewer'
+          ? [{ href: '/', icon: LayoutDashboard, label: 'Dashboard' }]
+          : []),
+        ...(isAdmin || isComercial || isAtendimento || profile?.role === 'viewer'
+          ? [{ href: '/leads', icon: Users, label: 'Leads' }]
+          : []),
+        ...(isAdmin || isComercial || isAtendimento
+          ? [{ href: '/whatsapp-conversations', icon: MessageCircle, label: 'Conversas' }]
+          : []),
+        ...(isAdmin || isComercial || isAtendimento
+          ? [{ href: '/pipeline', icon: GitBranch, label: 'Pipeline' }]
+          : []),
+        ...(isAdmin || isComercial || isAtendimento
+          ? [{ href: '/agenda', icon: Calendar, label: 'Agenda' }]
+          : []),
+        ...(isAdmin || isComercial || isAtendimento
+          ? [{ href: '/tags', icon: Tag, label: 'Etiquetas' }]
+          : []),
+        ...(isAdmin
+          ? [{ href: '/stages', icon: Layers, label: 'Etapas' }]
+          : []),
+        ...(isAdmin || isComercial || isAtendimento
+          ? [{ href: '/instructions', icon: BookOpen, label: 'Instruções' }]
+          : []),
+        ...(isAdmin || isComercial || isAtendimento
+          ? [{ href: '/report', icon: FileText, label: 'Relatório Semanal' }]
+          : []),
+        ...(isAdmin || isComercial || isAtendimento
+          ? [{ href: '/attendance-report', icon: BarChart2, label: 'Atendimentos' }]
+          : []),
+        ...(isAdmin || isComercial
+          ? [{ href: '/leads/import', icon: Upload, label: 'Importar Leads' }]
+          : []),
+        ...(isAdmin
+          ? [{ href: '/whatsapp-settings', icon: MessageCircle, label: 'Config WhatsApp' }]
+          : []),
+        ...(isAdmin
+          ? [{ href: '/whatsapp-templates', icon: LayoutTemplate, label: 'Templates WhatsApp' }]
+          : []),
+        ...(isAdmin
+          ? [{ href: '/automations', icon: Zap, label: 'Automações' }]
+          : []),
+        ...(isAdmin
+          ? [{ href: '/custom-fields', icon: TableProperties, label: 'Campos Per.' }]
+          : []),
+        ...(isAdmin
+          ? [{ href: '/users', icon: UserCog, label: 'Usuários' }]
+          : []),
+      ];
 
   const handleSignOut = async () => {
     try {
@@ -51,19 +94,43 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* ── MOBILE TOP BAR ── */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 text-white flex items-center justify-between px-4 z-50">
+        <div className="flex items-center gap-2">
+          <Scale className="w-6 h-6" />
+          <span className="font-bold text-base">DF Advogados</span>
+        </div>
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* ── MOBILE DRAWER OVERLAY ── */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── SIDEBAR (desktop always visible, mobile slide-in drawer) ── */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-slate-900 text-white transition-all duration-300 z-50 ${
-          sidebarOpen ? 'w-64' : 'w-20'
-        }`}
+        className={`fixed top-0 left-0 h-full bg-slate-900 text-white z-50 transition-all duration-300
+          ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0 md:w-20 w-64'}
+        `}
       >
+        {/* Sidebar header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-800">
           {sidebarOpen ? (
             <>
               <div className="flex items-center gap-3">
                 <Scale className="w-8 h-8" />
                 <div>
-                  <h1 className="font-bold text-lg">DF CRM</h1>
-                  <p className="text-xs text-slate-400">Divórcios</p>
+                  <h1 className="font-bold text-lg">DF Advogados</h1>
+                  <p className="text-xs text-slate-400">Funil de vendas</p>
                 </div>
               </div>
               <button
@@ -93,6 +160,7 @@ export default function Layout({ children }: LayoutProps) {
               <a
                 key={item.href}
                 href={item.href}
+                onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                   isActive
                     ? 'bg-slate-800 text-white'
@@ -130,19 +198,20 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       </aside>
 
+      {/* ── MAIN CONTENT ── */}
       <main
-        className={`transition-all duration-300 ${
-          sidebarOpen ? 'ml-64' : 'ml-20'
+        className={`transition-all duration-300 pt-16 md:pt-0 ${
+          sidebarOpen ? 'md:ml-64' : 'md:ml-20'
         }`}
       >
         {staleLeadsCount > 0 && (
-          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-2 text-sm text-amber-800">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
+          <div className="bg-amber-50 border-b border-amber-200 px-4 md:px-6 py-2 flex items-center gap-2 text-sm text-amber-800">
+            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
             <span><strong>{staleLeadsCount} lead{staleLeadsCount > 1 ? 's' : ''} estratégico{staleLeadsCount > 1 ? 's' : ''}</strong> sem atividade há mais de 24h</span>
-            <a href="/leads?stale=true" className="ml-auto text-amber-700 underline font-medium">Ver agora</a>
+            <a href="/leads?stale=true" className="ml-auto text-amber-700 underline font-medium whitespace-nowrap">Ver agora</a>
           </div>
         )}
-        <div className="p-8">
+        <div className="p-4 md:p-8">
           {children}
         </div>
       </main>

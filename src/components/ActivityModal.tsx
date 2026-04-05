@@ -2,19 +2,49 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { X } from 'lucide-react';
+import { notify } from '../lib/toast';
+
+interface ExistingActivity {
+  id: string;
+  lead_id: string;
+  user_id: string;
+  activity_type: string;
+  priority: string;
+  title: string;
+  description?: string | null;
+  scheduled_at: string;
+  duration_minutes?: number | null;
+  location?: string | null;
+}
 
 interface ActivityModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   defaultLeadId?: string;
+  activity?: ExistingActivity | null; // quando fornecido, entra em modo de edição
 }
 
-export default function ActivityModal({ isOpen, onClose, onSuccess, defaultLeadId }: ActivityModalProps) {
+// Converte ISO string (UTC) para valor de input datetime-local (horário local)
+function toDatetimeLocalValue(isoString: string): string {
+  const d = new Date(isoString);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Converte valor de datetime-local (horário local) para ISO string (UTC)
+function toISOString(localDateTime: string): string {
+  if (!localDateTime) return localDateTime;
+  return new Date(localDateTime).toISOString();
+}
+
+export default function ActivityModal({ isOpen, onClose, onSuccess, defaultLeadId, activity }: ActivityModalProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [leads, setLeads] = useState<Array<{ id: string; full_name: string }>>([]);
   const [users, setUsers] = useState<Array<{ id: string; full_name: string }>>([]);
+
+  const isEditing = !!activity?.id;
 
   const [form, setForm] = useState({
     lead_id: defaultLeadId || '',
@@ -30,15 +60,36 @@ export default function ActivityModal({ isOpen, onClose, onSuccess, defaultLeadI
 
   useEffect(() => {
     if (isOpen) {
-      if (defaultLeadId) {
-        setForm(prev => ({ ...prev, lead_id: defaultLeadId }));
+      if (activity) {
+        setForm({
+          lead_id: activity.lead_id,
+          user_id: activity.user_id,
+          activity_type: activity.activity_type,
+          priority: activity.priority,
+          title: activity.title,
+          description: activity.description || '',
+          scheduled_at: toDatetimeLocalValue(activity.scheduled_at),
+          duration_minutes: activity.duration_minutes ? String(activity.duration_minutes) : '30',
+          location: activity.location || '',
+        });
+      } else {
+        setForm({
+          lead_id: defaultLeadId || '',
+          user_id: user?.id || '',
+          activity_type: 'meeting',
+          priority: 'medium',
+          title: '',
+          description: '',
+          scheduled_at: '',
+          duration_minutes: '30',
+          location: '',
+        });
       }
       fetchData();
     }
-  }, [isOpen, defaultLeadId]);
+  }, [isOpen, activity, defaultLeadId]);
 
   const fetchData = async () => {
-    // Fetch leads and users
     const [leadsRes, usersRes] = await Promise.all([
       supabase.from('leads').select('id, full_name').order('full_name'),
       supabase.from('user_profiles').select('id, full_name').order('full_name')
@@ -60,43 +111,41 @@ export default function ActivityModal({ isOpen, onClose, onSuccess, defaultLeadI
       priority: form.priority,
       title: form.title,
       description: form.description || null,
-      scheduled_at: form.scheduled_at,
+      scheduled_at: toISOString(form.scheduled_at),
       duration_minutes: parseInt(form.duration_minutes) || null,
       location: form.location || null,
-      status: 'scheduled'
     };
 
-    const { error } = await supabase.from('scheduled_activities').insert([activityData]);
+    let error;
+    if (isEditing) {
+      ({ error } = await supabase
+        .from('scheduled_activities')
+        .update(activityData)
+        .eq('id', activity!.id));
+    } else {
+      ({ error } = await supabase
+        .from('scheduled_activities')
+        .insert([{ ...activityData, status: 'scheduled' }]));
+    }
 
     setLoading(false);
     if (error) {
-      console.error('Error creating activity:', error);
-      alert('Erro ao criar atividade: ' + error.message);
+      console.error('Error saving activity:', error);
+      notify.error('Erro ao salvar atividade: ' + error.message);
     } else {
+      notify.success(isEditing ? 'Atividade atualizada!' : 'Atividade criada!');
       onSuccess();
       onClose();
-      // Reset form
-      setForm({
-        lead_id: defaultLeadId || '',
-        user_id: user?.id || '',
-        activity_type: 'meeting',
-        priority: 'medium',
-        title: '',
-        description: '',
-        scheduled_at: '',
-        duration_minutes: '30',
-        location: '',
-      });
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-in fade-in duration-200" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end md:items-center justify-center z-[100] md:p-4 animate-in fade-in duration-200" onClick={onClose}>
+      <div className="bg-white md:rounded-2xl shadow-xl w-full md:max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col h-[95vh] md:h-auto md:max-h-[90vh] rounded-t-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100 bg-white sticky top-0 z-10">
-          <h2 className="text-xl font-bold text-gray-900">Nova Atividade</h2>
+          <h2 className="text-xl font-bold text-gray-900">{isEditing ? 'Editar Atividade' : 'Nova Atividade'}</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
             <X className="w-5 h-5" />
           </button>
@@ -109,7 +158,7 @@ export default function ActivityModal({ isOpen, onClose, onSuccess, defaultLeadI
             </label>
             <select
               required
-              disabled={!!defaultLeadId}
+              disabled={!!defaultLeadId || isEditing}
               value={form.lead_id}
               onChange={(e) => setForm({ ...form, lead_id: e.target.value })}
               className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all disabled:opacity-60"
@@ -258,7 +307,7 @@ export default function ActivityModal({ isOpen, onClose, onSuccess, defaultLeadI
               disabled={loading}
               className="flex-1 px-4 py-3 bg-blue-600 font-bold text-white rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-50 disabled:opacity-50"
             >
-              {loading ? 'Criando...' : 'Criar Atividade'}
+              {loading ? 'Salvando...' : isEditing ? 'Salvar Alterações' : 'Criar Atividade'}
             </button>
           </div>
         </form>
