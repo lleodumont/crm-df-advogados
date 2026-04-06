@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, MessageCircle, CheckCheck, Info, Tag as TagIcon, X, TrendingUp, RefreshCw, CalendarPlus, UserCheck, Paperclip, Image, Music, FileText, Download, ZoomIn, Video } from 'lucide-react';
+import { Send, MessageCircle, CheckCheck, Info, Tag as TagIcon, X, TrendingUp, RefreshCw, CalendarPlus, UserCheck, Paperclip, Image, Music, FileText, Download, ZoomIn, Video, AlertCircle, LayoutTemplate } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import LeadDetailModal from './LeadDetailModal';
 import ActivityModal from './ActivityModal';
+import { notify } from '../lib/toast';
 
 interface Message {
   id: string;
@@ -13,7 +14,25 @@ interface Message {
   media_url: string | null;
   direction: 'inbound' | 'outbound';
   status: string;
+  error?: string | null;
   created_at: string;
+  transcription?: string | null;
+}
+
+interface Template {
+  id: string;
+  name: string;
+  status: string;
+  category: string;
+  language: string;
+  components: TemplateComponent[];
+}
+
+interface TemplateComponent {
+  type: string;
+  text?: string;
+  buttons?: { type: string; text: string; url?: string; phone_number?: string }[];
+  parameters?: { type: string; text?: string }[];
 }
 
 interface MediaPreview {
@@ -84,6 +103,41 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const mediaMenuRef = useRef<HTMLDivElement>(null);
 
+  // File input refs
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Quick replies
+  const [quickReplies, setQuickReplies] = useState<{ id: string; shortcut: string; message: string }[]>([]);
+  const [quickReplySuggestions, setQuickReplySuggestions] = useState<{ id: string; shortcut: string; message: string }[]>([]);
+  const [quickReplyIndex, setQuickReplyIndex] = useState(0);
+  const quickReplyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    supabase.from('quick_replies').select('id, shortcut, message').order('shortcut').then(({ data }) => {
+      if (data) setQuickReplies(data);
+    });
+  }, []);
+
+  // Reset textarea height when message is cleared (after send)
+  useEffect(() => {
+    if (!newMessage && textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  }, [newMessage]);
+
+  // Transcription states
+  const [transcribingIds, setTranscribingIds] = useState<Set<string>>(new Set());
+
+  // Template states
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [sendingTemplate, setSendingTemplate] = useState(false);
+
   useEffect(() => {
     loadInstances();
     loadMessages();
@@ -115,6 +169,18 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
     scrollToBottom();
   }, [messages]);
 
+  // Fechar menu de mídia ao clicar fora
+  useEffect(() => {
+    if (!showMediaMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (mediaMenuRef.current && !mediaMenuRef.current.contains(e.target as Node)) {
+        setShowMediaMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showMediaMenu]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -142,6 +208,82 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
     setUsers(data?.map(u => ({ id: u.id, full_name: u.full_name || 'Usuário Sem Nome' })) || []);
   };
 
+  const loadTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-templates`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTemplates((data.templates || []).filter((t: Template) => t.status === 'APPROVED'));
+      }
+    } catch (error) {
+      console.error('Error loading templates:', error);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const sendTemplate = async (template: Template) => {
+    if (!selectedInstance) return;
+    setSendingTemplate(true);
+    setShowTemplateModal(false);
+
+    const tempId = `temp-${Date.now()}`;
+    const bodyComponent = template.components.find(c => c.type === 'BODY');
+    const optimisticMsg: Message = {
+      id: tempId,
+      phone_number: leadPhone,
+      message_type: 'template',
+      content: bodyComponent?.text || template.name,
+      media_url: null,
+      direction: 'outbound',
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, optimisticMsg]);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-send`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          instanceId: selectedInstance,
+          phoneNumber: leadPhone,
+          leadId,
+          templateName: template.name,
+          templateLanguage: template.language,
+          message: bodyComponent?.text || template.name,
+        }),
+      });
+
+      const data = await res.json();
+      // Remove optimistic — DB realtime will add the real record
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      if (!data.success) {
+        notify.error('Erro ao enviar template: ' + (data.error || 'Erro desconhecido'));
+      }
+    } catch (error) {
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      notify.error('Erro ao enviar template: ' + (error as Error).message);
+    } finally {
+      setSendingTemplate(false);
+    }
+  };
+
   const loadInstances = async () => {
     try {
       const { data, error } = await supabase
@@ -162,10 +304,12 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
 
   const loadMessages = async () => {
     try {
+      // Normaliza o telefone do lead para buscar todas as mensagens do número
+      const normalizedPhone = leadPhone.replace(/^\+/, '');
       const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('*')
-        .eq('lead_id', leadId)
+        .or(`lead_id.eq.${leadId},phone_number.eq.${normalizedPhone}`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -220,43 +364,64 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
     return publicUrl;
   };
 
-  const handleFileSelect = async (type: 'image' | 'audio' | 'video' | 'document') => {
-    setShowMediaMenu(false);
-    const input = document.createElement('input');
-    input.type = 'file';
-    if (type === 'image') input.accept = 'image/*';
-    else if (type === 'audio') input.accept = 'audio/*';
-    else if (type === 'video') input.accept = 'video/*';
-    else input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,application/*';
+  const processFileFromInput = async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'audio' | 'video' | 'document') => {
+    const file = e.target.files?.[0];
+    // Reset input so same file can be selected again
+    e.target.value = '';
+    if (!file) return;
 
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+    // Limit file size to 15MB
+    if (file.size > 15 * 1024 * 1024) {
+      notify.error('Arquivo muito grande. O limite é 15MB.');
+      return;
+    }
 
-      // Limit file size to 15MB
-      if (file.size > 15 * 1024 * 1024) {
-        alert('Arquivo muito grande. O limite é 15MB.');
-        return;
-      }
-
-      try {
-        const base64 = await fileToBase64(file);
-        setMediaPreview({
-          file,
-          base64,
-          type,
-          name: file.name,
-          mimeType: file.type,
-        });
-      } catch {
-        alert('Erro ao processar o arquivo. Tente novamente.');
-      }
-    };
-    input.click();
+    try {
+      const base64 = await fileToBase64(file);
+      setMediaPreview({
+        file,
+        base64,
+        type,
+        name: file.name,
+        mimeType: file.type,
+      });
+    } catch {
+      notify.error('Erro ao processar o arquivo. Tente novamente.');
+    }
   };
 
   const cancelMediaPreview = () => {
     setMediaPreview(null);
+  };
+
+  const transcribeAudio = async (messageId: string, audioUrl: string) => {
+    setTranscribingIds(prev => new Set(prev).add(messageId));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/transcribe-audio`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ audioUrl, messageId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro na transcrição');
+
+      // Atualiza a mensagem localmente
+      setMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, transcription: json.transcription } : m
+      ));
+    } catch (err: any) {
+      notify.error('Erro ao transcrever: ' + err.message);
+    } finally {
+      setTranscribingIds(prev => {
+        const next = new Set(prev);
+        next.delete(messageId);
+        return next;
+      });
+    }
   };
 
   const sendMedia = async () => {
@@ -315,7 +480,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       }
     } catch (error) {
       console.error('Error sending media:', error);
-      alert('Erro ao enviar: ' + (error as Error).message);
+      notify.error('Erro ao enviar: ' + (error as Error).message);
       setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally {
       setSendingMedia(false);
@@ -362,22 +527,40 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
         }),
       });
 
+      const data = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        setMessages(prev => prev.filter(m => m.id !== tempId));
-        setNewMessage(messageText);
-        const rawText = await response.text().catch(() => '');
-        let errMsg = `HTTP ${response.status}`;
-        try {
-          const errData = JSON.parse(rawText);
-          errMsg = errData.error || errData.message || errMsg;
-        } catch {
-          if (rawText) errMsg += ': ' + rawText.slice(0, 200);
-        }
-        throw new Error(errMsg);
+        const errMsg = data.error || `HTTP ${response.status}`;
+        // Update optimistic message to show failure inline
+        setMessages(prev => prev.map(m => m.id === tempId
+          ? { ...m, status: 'failed', error: errMsg }
+          : m
+        ));
+        notify.error('Erro ao enviar: ' + errMsg);
+        return;
       }
+
+      // If server returned success: false (Meta API failed but saved record)
+      if (data.success === false) {
+        const errMsg = data.error || 'Falha no envio';
+        setMessages(prev => prev.map(m => m.id === tempId
+          ? { ...m, status: 'failed', error: errMsg }
+          : m
+        ));
+        notify.error('Mensagem não entregue: ' + errMsg);
+        return;
+      }
+
+      // Success — remove optimistic, realtime will add real record
+      setMessages(prev => prev.filter(m => m.id !== tempId));
     } catch (error) {
       console.error('Error sending message:', error);
-      alert('Erro ao enviar: ' + (error as Error).message);
+      const errMsg = (error as Error).message;
+      setMessages(prev => prev.map(m => m.id === tempId
+        ? { ...m, status: 'failed', error: errMsg }
+        : m
+      ));
+      notify.error('Erro ao enviar: ' + errMsg);
     } finally {
       setSending(false);
     }
@@ -404,7 +587,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       loadHeaderData();
     } catch (error: any) {
       console.error('Error adding tag:', error);
-      alert('Erro ao adicionar etiqueta: ' + error.message);
+      notify.error('Erro ao adicionar etiqueta: ' + error.message);
     }
   };
 
@@ -415,7 +598,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       setLeadTags(prev => prev.filter(t => t.id !== tagId));
     } catch (error: any) {
       console.error('Error removing tag:', error);
-      alert('Erro ao remover etiqueta: ' + error.message);
+      notify.error('Erro ao remover etiqueta: ' + error.message);
     }
   };
 
@@ -427,7 +610,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       setShowAssignPopover(false);
     } catch (error: any) {
       console.error('Error assigning:', error);
-      alert('Erro ao atribuir responsável: ' + error.message);
+      notify.error('Erro ao atribuir responsável: ' + error.message);
     }
   };
 
@@ -607,8 +790,9 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
                     );
                   }
                   if (msgType === 'audio' && mediaUrl) {
+                    const isTranscribing = transcribingIds.has(message.id);
                     return (
-                      <div className="mb-2">
+                      <div className="mb-2 space-y-2">
                         <audio
                           controls
                           src={mediaUrl}
@@ -617,6 +801,28 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
                         >
                           Seu navegador não suporta reprodução de áudio.
                         </audio>
+
+                        {message.transcription ? (
+                          <div className={`rounded-xl border p-3 text-xs space-y-1 ${isFromLead ? 'bg-gray-50 border-gray-200' : 'bg-blue-50 border-blue-200'}`}>
+                            <div className="flex items-center gap-1.5 font-bold text-gray-500 mb-1">
+                              <FileText className="w-3.5 h-3.5" />
+                              <span>Transcrição do áudio</span>
+                            </div>
+                            <p className={`leading-relaxed ${isFromLead ? 'text-gray-700' : 'text-blue-900'}`}>{message.transcription}</p>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => transcribeAudio(message.id, mediaUrl)}
+                            disabled={isTranscribing}
+                            className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60 ${isFromLead ? 'text-gray-500 hover:text-gray-700 hover:bg-gray-100' : 'text-blue-400 hover:text-blue-600 hover:bg-blue-50'}`}
+                          >
+                            {isTranscribing ? (
+                              <><RefreshCw className="w-3 h-3 animate-spin" /> Transcrevendo...</>
+                            ) : (
+                              <><FileText className="w-3 h-3" /> Transcrever áudio</>
+                            )}
+                          </button>
+                        )}
                       </div>
                     );
                   }
@@ -669,14 +875,29 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
                 const hasMedia = !!mediaContent;
                 const isOnlyMedia = (hasMedia || msgType === 'video') && (!message.content || ['Image', 'Audio message', 'Document', 'Video'].includes(message.content));
 
+                const isFailed = message.status === 'failed';
+
                 return (
                   <div key={message.id} className={`flex ${isFromLead ? 'justify-start' : 'justify-end'} mb-2`}>
-                    <div className={`max-w-[80%] px-4 py-3 rounded-2xl shadow-sm text-sm font-medium leading-relaxed ${isFromLead ? 'bg-gray-100 text-gray-800 rounded-tl-none border border-gray-200/50' : 'bg-blue-600 text-white rounded-tr-none shadow-blue-100'}`}>
+                    <div className={`max-w-[80%] px-4 py-3 rounded-2xl shadow-sm text-sm font-medium leading-relaxed ${
+                      isFromLead
+                        ? 'bg-gray-100 text-gray-800 rounded-tl-none border border-gray-200/50'
+                        : isFailed
+                          ? 'bg-red-50 text-red-800 rounded-tr-none border border-red-200'
+                          : 'bg-blue-600 text-white rounded-tr-none shadow-blue-100'
+                    }`}>
                       {mediaContent}
                       {!isOnlyMedia && message.content}
-                      <div className={`text-[9px] mt-1.5 font-bold uppercase tracking-wider flex justify-end gap-1 ${isFromLead ? 'text-gray-400' : 'text-blue-200'}`}>
+                      {isFailed && message.error && (
+                        <div className="flex items-start gap-1 mt-2 text-[10px] text-red-600 font-semibold">
+                          <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                          <span>Não enviado: {message.error}</span>
+                        </div>
+                      )}
+                      <div className={`text-[9px] mt-1.5 font-bold uppercase tracking-wider flex justify-end gap-1 ${isFromLead ? 'text-gray-400' : isFailed ? 'text-red-400' : 'text-blue-200'}`}>
                         {formatTime(message.created_at)}
-                        {!isFromLead && message.status === 'sent' && <CheckCheck className="w-3 h-3" />}
+                        {!isFromLead && !isFailed && message.status === 'sent' && <CheckCheck className="w-3 h-3" />}
+                        {isFailed && <AlertCircle className="w-3 h-3" />}
                       </div>
                     </div>
                   </div>
@@ -733,6 +954,16 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
         )}
 
         <div className="flex items-end gap-3 max-w-4xl mx-auto relative">
+          {/* Template button */}
+          <button
+            onClick={() => { setShowTemplateModal(true); loadTemplates(); }}
+            disabled={sending || sendingMedia || sendingTemplate || instances.length === 0}
+            className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all flex-shrink-0 bg-white border border-gray-200 text-gray-400 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 shadow-sm disabled:opacity-50"
+            title="Enviar template"
+          >
+            <LayoutTemplate className="w-5 h-5" />
+          </button>
+
           {/* Paperclip button with media menu */}
           <div className="relative" ref={mediaMenuRef}>
             <button
@@ -744,10 +975,16 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
               <Paperclip className="w-5 h-5" />
             </button>
 
+            {/* Hidden file inputs — style inline para garantir clique programático funcionar */}
+            <input ref={imageInputRef} type="file" accept="image/*" style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0, width: 1, height: 1 }} onChange={(e) => processFileFromInput(e, 'image')} />
+            <input ref={audioInputRef} type="file" accept="audio/*" style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0, width: 1, height: 1 }} onChange={(e) => processFileFromInput(e, 'audio')} />
+            <input ref={videoInputRef} type="file" accept="video/*" style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0, width: 1, height: 1 }} onChange={(e) => processFileFromInput(e, 'video')} />
+            <input ref={documentInputRef} type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar" style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0, width: 1, height: 1 }} onChange={(e) => processFileFromInput(e, 'document')} />
+
             {showMediaMenu && (
               <div className="absolute bottom-14 left-0 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 w-44 z-[70] animate-in fade-in zoom-in-95">
                 <button
-                  onClick={() => handleFileSelect('image')}
+                  onClick={() => { imageInputRef.current?.click(); setShowMediaMenu(false); }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-xl bg-green-100 flex items-center justify-center">
@@ -756,7 +993,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
                   Imagem
                 </button>
                 <button
-                  onClick={() => handleFileSelect('audio')}
+                  onClick={() => { audioInputRef.current?.click(); setShowMediaMenu(false); }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center">
@@ -765,7 +1002,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
                   Áudio
                 </button>
                 <button
-                  onClick={() => handleFileSelect('video')}
+                  onClick={() => { videoInputRef.current?.click(); setShowMediaMenu(false); }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-xl bg-red-100 flex items-center justify-center">
@@ -774,7 +1011,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
                   Vídeo
                 </button>
                 <button
-                  onClick={() => handleFileSelect('document')}
+                  onClick={() => { documentInputRef.current?.click(); setShowMediaMenu(false); }}
                   className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -786,14 +1023,95 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
             )}
           </div>
 
+          {/* Quick reply suggestions */}
+          {quickReplySuggestions.length > 0 && (
+            <div
+              ref={quickReplyRef}
+              className="absolute bottom-full left-0 right-0 mb-2 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50 max-h-64 overflow-y-auto"
+            >
+              <div className="px-4 py-2 border-b border-gray-50 flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Frases rápidas</span>
+                <span className="text-[10px] text-gray-300">↑↓ navegar · Enter selecionar · Esc fechar</span>
+              </div>
+              {quickReplySuggestions.map((qr, i) => (
+                <button
+                  key={qr.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setNewMessage(qr.message);
+                    setQuickReplySuggestions([]);
+                    setQuickReplyIndex(0);
+                    setTimeout(() => textareaRef.current?.focus(), 0);
+                  }}
+                  className={`w-full text-left px-4 py-3 transition-colors border-b border-gray-50 last:border-0 ${
+                    i === quickReplyIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-2 py-0.5 rounded mr-2">/{qr.shortcut}</span>
+                  <span className="text-sm text-gray-700 line-clamp-1">{qr.message}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <textarea
+            ref={textareaRef}
             value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !sending && !sendingMedia) { e.preventDefault(); sendMessage(); } }}
-            placeholder={mediaPreview ? 'Adicione uma legenda (opcional)...' : 'Digite uma mensagem...'}
+            onChange={(e) => {
+              const val = e.target.value;
+              setNewMessage(val);
+              e.target.style.height = 'auto';
+              e.target.style.height = `${e.target.scrollHeight}px`;
+              // Detecta /atalho no início ou após espaço/newline
+              const match = val.match(/(^|\s)\/(\w*)$/);
+              if (match) {
+                const term = match[2].toLowerCase();
+                const filtered = quickReplies.filter(qr =>
+                  qr.shortcut.toLowerCase().startsWith(term)
+                );
+                setQuickReplySuggestions(filtered);
+                setQuickReplyIndex(0);
+              } else {
+                setQuickReplySuggestions([]);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (quickReplySuggestions.length > 0) {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setQuickReplyIndex(i => Math.min(i + 1, quickReplySuggestions.length - 1));
+                  return;
+                }
+                if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setQuickReplyIndex(i => Math.max(i - 1, 0));
+                  return;
+                }
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  const selected = quickReplySuggestions[quickReplyIndex];
+                  if (selected) {
+                    setNewMessage(selected.message);
+                    setQuickReplySuggestions([]);
+                    setQuickReplyIndex(0);
+                  }
+                  return;
+                }
+                if (e.key === 'Escape') {
+                  setQuickReplySuggestions([]);
+                  return;
+                }
+              }
+              if (e.key === 'Enter' && !e.shiftKey && !sending && !sendingMedia) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder={mediaPreview ? 'Adicione uma legenda (opcional)...' : 'Digite / para frases rápidas...'}
             disabled={sending || sendingMedia || instances.length === 0}
-            className="flex-1 px-5 py-3.5 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-50/50 resize-none max-h-32 text-sm font-medium transition-all shadow-sm shadow-gray-50 disabled:opacity-50"
+            className="flex-1 px-5 py-3.5 bg-white border border-gray-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-blue-50/50 resize-none text-sm font-medium transition-all shadow-sm shadow-gray-50 disabled:opacity-50"
             rows={1}
+            style={{ maxHeight: '160px', overflowY: 'auto' }}
           />
 
           {/* Send button — sends media if preview exists, else text */}
@@ -821,6 +1139,62 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       {/* Modal Integration */}
       {isModalOpen && (
         <LeadDetailModal leadId={leadId} onClose={() => { setIsModalOpen(false); loadHeaderData(); }} />
+      )}
+
+      {/* Template Picker Modal */}
+      {showTemplateModal && (
+        <div className="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-4" onClick={() => setShowTemplateModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="font-black text-gray-900">Templates aprovados</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Selecione um template para enviar</p>
+              </div>
+              <button onClick={() => setShowTemplateModal(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2 styled-scrollbar">
+              {loadingTemplates ? (
+                <div className="flex items-center justify-center py-12">
+                  <RefreshCw className="w-6 h-6 animate-spin text-blue-300" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <LayoutTemplate className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                  <p className="font-bold text-sm">Nenhum template aprovado</p>
+                  <p className="text-xs mt-1">Crie templates em <a href="/whatsapp-templates" className="text-blue-500 underline">Config Templates</a></p>
+                </div>
+              ) : templates.map(template => {
+                const body = template.components.find(c => c.type === 'BODY');
+                return (
+                  <button
+                    key={template.id}
+                    onClick={() => sendTemplate(template)}
+                    disabled={sendingTemplate}
+                    className="w-full text-left p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all group disabled:opacity-50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-gray-900 group-hover:text-blue-700">{template.name}</p>
+                        {body?.text && (
+                          <p className="text-xs text-gray-500 mt-1 line-clamp-2">{body.text}</p>
+                        )}
+                      </div>
+                      <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 bg-green-50 text-green-600 rounded-full border border-green-100 flex-shrink-0">
+                        {template.language}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-6 py-3 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
+              <span>{templates.length} template{templates.length !== 1 ? 's' : ''} disponível{templates.length !== 1 ? 'is' : ''}</span>
+              <a href="/whatsapp-templates" className="text-blue-500 hover:underline font-medium">Gerenciar templates →</a>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Popovers for quick actions */}
@@ -889,8 +1263,8 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       )}
 
       {/* Backdrop for popovers */}
-      {(showTagSelector || showStageSelector || showAssignPopover || showMediaMenu) && (
-        <div className="fixed inset-0 z-[50]" onClick={() => { setShowTagSelector(false); setShowStageSelector(false); setShowAssignPopover(false); setShowMediaMenu(false); }} />
+      {(showTagSelector || showStageSelector || showAssignPopover) && (
+        <div className="fixed inset-0 z-[50]" onClick={() => { setShowTagSelector(false); setShowStageSelector(false); setShowAssignPopover(false); }} />
       )}
 
       {/* Lightbox for image zoom */}
