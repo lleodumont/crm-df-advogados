@@ -13,6 +13,13 @@ export default function Layout({ children }: LayoutProps) {
   const { profile, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);  // desktop: wide/narrow
   const [drawerOpen, setDrawerOpen] = useState(false);    // mobile: drawer aberto/fechado
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
   const [staleLeadsCount, setStaleLeadsCount] = useState(0);
   const initialLeadsLoaded = useRef(false);
 
@@ -140,15 +147,18 @@ export default function Layout({ children }: LayoutProps) {
       )}
 
       {/* ── SIDEBAR ──
-           Mobile: escondido por padrão (-translate-x-full), aparece só quando drawerOpen=true
-           Desktop: sempre visível, largura controlada por sidebarOpen
+           Mobile: escondido via style transform, visível só quando drawerOpen=true
+           Desktop (md+): sempre visível, largura controlada por sidebarOpen
       ── */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-slate-900 text-white z-50 transition-all duration-300
-          ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}
-          md:translate-x-0
-          w-64 ${sidebarOpen ? 'md:w-64' : 'md:w-20'}
-        `}
+        className={`fixed top-0 left-0 h-full bg-slate-900 text-white z-50 transition-all duration-300 ${
+          sidebarOpen ? 'md:w-64' : 'md:w-20'
+        } w-64`}
+        style={{
+          transform: isMobile
+            ? drawerOpen ? 'translateX(0)' : 'translateX(-100%)'
+            : 'translateX(0)',
+        }}
       >
         {/* Sidebar header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-800">

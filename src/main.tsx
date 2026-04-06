@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { Toaster } from 'sonner';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { unlockAudio } from './lib/sounds';
 import './index.css';
+
+unlockAudio();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
