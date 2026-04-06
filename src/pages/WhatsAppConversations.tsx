@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { playNewMessageSound } from '../lib/sounds';
 import { MessageCircle, Search, User, X, Filter, ChevronDown, Send, Inbox, Hash, CheckCheck, MailOpen } from 'lucide-react';
 import WhatsAppChat from '../components/WhatsAppChat';
 
@@ -126,6 +127,10 @@ export default function WhatsAppConversations() {
         },
         (payload: any) => {
           loadConversations();
+          // Toca som para mensagens inbound (recebidas)
+          if (payload.new?.direction === 'inbound') {
+            playNewMessageSound();
+          }
           // Se a mensagem chegou na conversa que está aberta, marca como lida imediatamente
           const openConv = selectedConversationRef.current;
           if (openConv && payload.new?.lead_id === openConv.lead_id && payload.new?.direction === 'inbound') {
@@ -539,7 +544,7 @@ export default function WhatsAppConversations() {
       </div>
     )}
 
-    <div className="flex bg-white rounded-xl shadow-sm border border-gray-100" style={{ height: 'calc(100vh - 112px)' }}>
+    <div className="flex bg-white rounded-xl shadow-sm border border-gray-100 h-[calc(100vh-80px)] md:h-[calc(100vh-112px)]">
 
       {/* ── COLUNA ESQUERDA: lista de conversas ── */}
       <div className={`flex-shrink-0 border-r border-gray-100 flex flex-col w-full md:w-80 ${selectedConversation ? 'hidden md:flex' : 'flex'}`}>

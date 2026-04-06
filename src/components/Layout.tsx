@@ -1,7 +1,8 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Scale, LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers, TableProperties, AlertTriangle, BarChart2, LayoutTemplate, Zap } from 'lucide-react';
+import { playNewLeadSound } from '../lib/sounds';
 
 
 interface LayoutProps {
@@ -10,8 +11,10 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const { profile, signOut } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);  // desktop: wide/narrow
+  const [drawerOpen, setDrawerOpen] = useState(false);    // mobile: drawer aberto/fechado
   const [staleLeadsCount, setStaleLeadsCount] = useState(0);
+  const initialLeadsLoaded = useRef(false);
 
   useEffect(() => {
     const fetchStale = async () => {
@@ -21,6 +24,26 @@ export default function Layout({ children }: LayoutProps) {
     fetchStale();
     const interval = setInterval(fetchStale, 5 * 60 * 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Notificação sonora de novo lead
+  useEffect(() => {
+    const channel = supabase
+      .channel('layout_new_leads')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, () => {
+        if (initialLeadsLoaded.current) {
+          playNewLeadSound();
+        }
+      })
+      .subscribe();
+
+    // Marca que o carregamento inicial passou após 3s
+    const timer = setTimeout(() => { initialLeadsLoaded.current = true; }, 3000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearTimeout(timer);
+    };
   }, []);
 
   const isAdmin = profile?.role === 'admin';
@@ -95,13 +118,13 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ── MOBILE TOP BAR ── */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 text-white flex items-center justify-between px-4 z-50">
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 text-white flex items-center justify-between px-4 z-40">
         <div className="flex items-center gap-2">
           <Scale className="w-6 h-6" />
           <span className="font-bold text-base">DF Advogados</span>
         </div>
         <button
-          onClick={() => setSidebarOpen(true)}
+          onClick={() => setDrawerOpen(true)}
           className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
         >
           <Menu className="w-5 h-5" />
@@ -109,17 +132,22 @@ export default function Layout({ children }: LayoutProps) {
       </div>
 
       {/* ── MOBILE DRAWER OVERLAY ── */}
-      {sidebarOpen && (
+      {drawerOpen && (
         <div
           className="md:hidden fixed inset-0 bg-black/50 z-40"
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => setDrawerOpen(false)}
         />
       )}
 
-      {/* ── SIDEBAR (desktop always visible, mobile slide-in drawer) ── */}
+      {/* ── SIDEBAR ──
+           Mobile: escondido por padrão (-translate-x-full), aparece só quando drawerOpen=true
+           Desktop: sempre visível, largura controlada por sidebarOpen
+      ── */}
       <aside
         className={`fixed top-0 left-0 h-full bg-slate-900 text-white z-50 transition-all duration-300
-          ${sidebarOpen ? 'translate-x-0 w-64' : '-translate-x-full md:translate-x-0 md:w-20 w-64'}
+          ${drawerOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:translate-x-0
+          w-64 ${sidebarOpen ? 'md:w-64' : 'md:w-20'}
         `}
       >
         {/* Sidebar header */}
@@ -135,7 +163,13 @@ export default function Layout({ children }: LayoutProps) {
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className="p-1 hover:bg-slate-800 rounded transition-colors"
+                className="hidden md:block p-1 hover:bg-slate-800 rounded transition-colors"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setDrawerOpen(false)}
+                className="md:hidden p-1 hover:bg-slate-800 rounded transition-colors"
               >
                 <Menu className="w-5 h-5" />
               </button>
@@ -160,7 +194,7 @@ export default function Layout({ children }: LayoutProps) {
               <a
                 key={item.href}
                 href={item.href}
-                onClick={() => setSidebarOpen(false)}
+                onClick={() => setDrawerOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                   isActive
                     ? 'bg-slate-800 text-white'
