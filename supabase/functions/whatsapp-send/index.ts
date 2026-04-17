@@ -11,6 +11,13 @@ interface SendMessageRequest {
   phoneNumber: string;
   message: string;
   leadId?: string;
+  // Media fields
+  mediaType?: "image" | "audio" | "video" | "document";
+  mediaBase64?: string;
+  mediaUrl?: string;
+  mediaFilename?: string;
+  mediaMimeType?: string;
+  mediaCaption?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -37,12 +44,39 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { instanceId, phoneNumber, message, leadId }: SendMessageRequest = await req.json();
-    console.log("Received request:", { instanceId, phoneNumber, leadId, messageLength: message.length });
+    const {
+      instanceId,
+      phoneNumber,
+      message,
+      leadId,
+      mediaType,
+      mediaBase64,
+      mediaUrl,
+      mediaFilename,
+      mediaMimeType,
+      mediaCaption,
+    }: SendMessageRequest = await req.json();
 
-    if (!instanceId || !phoneNumber || !message) {
+    const isMediaMessage = !!mediaType;
+    console.log("Received request:", { instanceId, phoneNumber, leadId, isMediaMessage, mediaType });
+
+    if (!instanceId || !phoneNumber) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: instanceId, phoneNumber, message" }),
+        JSON.stringify({ error: "Missing required fields: instanceId, phoneNumber" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!isMediaMessage && !message) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: message (for text messages)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (isMediaMessage && !mediaBase64 && !mediaUrl) {
+      return new Response(
+        JSON.stringify({ error: "Missing required field: mediaBase64 or mediaUrl (for media messages)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -101,14 +135,39 @@ Deno.serve(async (req: Request) => {
 
     console.log("Instance found:", instance.id);
 
-    // UAZapi endpoint for sending messages - correct format
-    const apiUrl = `${instance.api_url}/send/text`;
-    const payload = {
-      number: formattedPhone,
-      text: message
-    };
+    // Build UAZapi endpoint and payload
+    // UazAPI usa /send/media para todos os tipos de mídia com campo "type"
+    // Docs: https://docs.uazapi.com/endpoint/post/send~media
+    let apiUrl: string;
+    let payload: Record<string, unknown>;
 
-    console.log("Sending to UAZapi:", { url: apiUrl, number: formattedPhone, payload });
+    if (isMediaMessage) {
+      apiUrl = `${instance.api_url}/send/media`;
+
+      // "file" aceita URL ou base64
+      const fileValue = mediaBase64
+        ? `data:${mediaMimeType || "application/octet-stream"};base64,${mediaBase64}`
+        : mediaUrl || "";
+
+      // UazAPI: "audio" para arquivos de áudio normais; "ptt" seria voz gravada
+      const uazType = mediaType;
+
+      payload = {
+        number: formattedPhone,
+        type: uazType,
+        file: fileValue,
+      };
+
+      if (mediaCaption) payload.text = mediaCaption;
+      if (mediaType === "document" && mediaFilename) payload.docName = mediaFilename;
+      if (mediaMimeType) payload.mimetype = mediaMimeType;
+
+    } else {
+      apiUrl = `${instance.api_url}/send/text`;
+      payload = { number: formattedPhone, text: message };
+    }
+
+    console.log("Sending to UAZapi:", { url: apiUrl, number: formattedPhone, mediaType: mediaType || "text" });
 
     const response = await fetch(apiUrl, {
       method: "POST",
@@ -150,8 +209,9 @@ Deno.serve(async (req: Request) => {
         instance_id: instance.id,
         lead_id: leadId || null,
         phone_number: formattedPhone,
-        message_type: "text",
-        content: message,
+        message_type: isMediaMessage ? mediaType : "text",
+        content: isMediaMessage ? (mediaCaption || mediaFilename || mediaType || "media") : message,
+        media_url: isMediaMessage ? (mediaUrl || null) : null,
         direction: "outbound",
         status: "sent",
         external_id: responseData.messageId || responseData.id,

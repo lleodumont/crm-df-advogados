@@ -118,6 +118,8 @@ Deno.serve(async (req: Request) => {
 
     // sender_pn é sempre no formato @s.whatsapp.net; sender pode ser LID
     const rawPhone = msg.sender_pn ?? msg.sender ?? msg.chatid ?? rawBody.chat?.wa_chatid ?? "";
+    // Preservar sub-objetos de mídia do content (UazAPI encapsula em msg.content)
+    const msgContent = msg.content ?? {};
     const webhookData: WebhookMessage = {
       ...rawBody,
       instanceId: rawBody.instanceName ?? rawBody.instanceId ?? rawBody.instance ?? "",
@@ -125,7 +127,19 @@ Deno.serve(async (req: Request) => {
       phone: rawPhone.replace(/@s\.whatsapp\.net$/, "").replace(/@.*$/, "").replace(/\D/g, ""),
       fromMe: msg.fromMe ?? msg.wasSentByApi ?? false,
       messageType: msg.type ?? msg.messageType ?? "text",
-      message: { conversation: msg.text ?? msg.content?.text ?? "" },
+      // Preservar sub-objetos de mídia além do texto
+      message: {
+        conversation: msg.text ?? msgContent.text ?? "",
+        imageMessage: msg.imageMessage ?? msgContent.imageMessage,
+        videoMessage: msg.videoMessage ?? msgContent.videoMessage,
+        audioMessage: msg.audioMessage ?? msgContent.audioMessage,
+        documentMessage: msg.documentMessage ?? msgContent.documentMessage,
+        ...msgContent,
+      },
+      // base64 e mimetype podem vir no topo do payload UazAPI para mídia
+      base64: msg.base64 ?? msgContent.base64 ?? rawBody.base64,
+      mimetype: msg.mimetype ?? msgContent.mimetype ?? rawBody.mimetype,
+      caption: msg.caption ?? msgContent.caption ?? rawBody.caption,
     };
 
     console.log("Campos normalizados:", JSON.stringify({
