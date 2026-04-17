@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { playNotificationSound } from '../lib/notificationSound';
+import { playNotificationSound, unlockAudio } from '../lib/notificationSound';
 import { LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers, TableProperties, AlertTriangle, BarChart2 } from 'lucide-react';
 
 interface LayoutProps {
@@ -96,7 +96,7 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50" onClick={unlockAudio}>
       <aside
         className={`fixed top-0 left-0 h-full bg-slate-900 text-white transition-all duration-300 z-50 ${
           sidebarOpen ? 'w-64' : 'w-20'
