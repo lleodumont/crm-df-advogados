@@ -20,7 +20,7 @@ export default function Layout({ children }: LayoutProps) {
   const { profile, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [staleLeadsCount, setStaleLeadsCount] = useState(0);
-  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unreadLeads, setUnreadLeads] = useState<Set<string>>(new Set());
   const [newLeads, setNewLeads] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
@@ -52,15 +52,18 @@ export default function Layout({ children }: LayoutProps) {
         { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
         (payload) => {
           if (payload.new?.direction === 'inbound') {
-            const onLeadChat = currentPathRef.current.includes(`/leads/${payload.new.lead_id}`);
+            const leadId = payload.new.lead_id as string | null;
+            const onLeadChat = leadId && currentPathRef.current.includes(`/leads/${leadId}`);
             if (!onLeadChat) {
               playNotificationSound('message');
-              setUnreadMessages((n) => n + 1);
+              if (leadId) {
+                setUnreadLeads((prev) => new Set([...prev, leadId]));
+              }
               addToastRef.current({
                 type: 'message',
                 title: 'Nova mensagem',
                 body: payload.new.content || 'Mensagem recebida',
-                leadId: payload.new.lead_id,
+                ...(leadId ? { leadId } : {}),
               });
             }
           }
@@ -86,9 +89,14 @@ export default function Layout({ children }: LayoutProps) {
           }
         }
       )
-      .subscribe();
+      .subscribe(() => {});
 
-    const updatePath = () => { currentPathRef.current = window.location.pathname; };
+    const updatePath = () => {
+      const path = window.location.pathname;
+      currentPathRef.current = path;
+      const match = path.match(/^\/leads\/([^/]+)/);
+      if (match) setUnreadLeads((prev) => { const s = new Set(prev); s.delete(match[1]); return s; });
+    };
     window.addEventListener('popstate', updatePath);
 
     return () => {
@@ -170,7 +178,6 @@ export default function Layout({ children }: LayoutProps) {
                 key={item.href}
                 href={item.href}
                 onClick={() => {
-                  if (isConversas) setUnreadMessages(0);
                   if (isLeads) setNewLeads(0);
                 }}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
@@ -192,9 +199,9 @@ export default function Layout({ children }: LayoutProps) {
                     {newLeads > 9 ? '9+' : newLeads}
                   </span>
                 )}
-                {isConversas && unreadMessages > 0 && (
+                {isConversas && unreadLeads.size > 0 && (
                   <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                    {unreadLeads.size > 9 ? '9+' : unreadLeads.size}
                   </span>
                 )}
               </a>
@@ -246,7 +253,10 @@ export default function Layout({ children }: LayoutProps) {
               toast.type === 'lead' ? 'bg-green-600' : 'bg-blue-600'
             }`}
             onClick={() => {
-              if (toast.leadId) window.location.href = `/leads/${toast.leadId}?tab=whatsapp`;
+              if (toast.leadId) {
+                setUnreadLeads((prev) => { const s = new Set(prev); s.delete(toast.leadId!); return s; });
+                window.location.href = `/leads/${toast.leadId}?tab=whatsapp`;
+              }
               setToasts((prev) => prev.filter((t) => t.id !== toast.id));
             }}
           >
