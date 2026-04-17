@@ -54,6 +54,20 @@ export default function Layout({ children }: LayoutProps) {
     });
   }, []);
 
+  // Validar unreadLeads contra o DB para remover IDs de leads deletados
+  useEffect(() => {
+    if (unreadLeads.size === 0) return;
+    const ids = [...unreadLeads];
+    supabase.from('leads').select('id').in('id', ids).then(({ data }) => {
+      const existing = new Set((data || []).map((r: any) => r.id));
+      const valid = new Set(ids.filter((id) => existing.has(id)));
+      if (valid.size !== unreadLeads.size) {
+        localStorage.setItem('unread_leads', JSON.stringify([...valid]));
+        setUnreadLeads(valid);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const fetchStale = async () => {
       const { data } = await supabase.from('vw_stale_strategic_leads').select('lead_id');
