@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { playNotificationSound, unlockAudio } from '../lib/notificationSound';
+import { playNotificationSound, setupAudioUnlock } from '../lib/notificationSound';
 import { LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers, TableProperties, AlertTriangle, BarChart2, X, UserPlus } from 'lucide-react';
 
 interface Toast {
@@ -26,11 +26,11 @@ export default function Layout({ children }: LayoutProps) {
   const toastIdRef = useRef(0);
   const currentPathRef = useRef(window.location.pathname);
 
-  const addToast = (toast: Omit<Toast, 'id'>) => {
+  const addToastRef = useRef((toast: Omit<Toast, 'id'>) => {
     const id = ++toastIdRef.current;
     setToasts((prev) => [...prev, { ...toast, id }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
-  };
+  });
 
   useEffect(() => {
     const fetchStale = async () => {
@@ -43,6 +43,8 @@ export default function Layout({ children }: LayoutProps) {
   }, []);
 
   useEffect(() => {
+    setupAudioUnlock();
+
     const msgChannel = supabase
       .channel('global_new_messages')
       .on(
@@ -54,7 +56,7 @@ export default function Layout({ children }: LayoutProps) {
             if (!onLeadChat) {
               playNotificationSound('message');
               setUnreadMessages((n) => n + 1);
-              addToast({
+              addToastRef.current({
                 type: 'message',
                 title: 'Nova mensagem',
                 body: payload.new.content || 'Mensagem recebida',
@@ -75,7 +77,7 @@ export default function Layout({ children }: LayoutProps) {
           if (payload.new?.source === 'whatsapp') {
             playNotificationSound('lead');
             setNewLeads((n) => n + 1);
-            addToast({
+            addToastRef.current({
               type: 'lead',
               title: 'Novo lead via WhatsApp',
               body: payload.new.full_name || payload.new.phone || 'Novo contato',
@@ -124,7 +126,7 @@ export default function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50" onClick={unlockAudio}>
+    <div className="min-h-screen bg-gray-50">
       <aside
         className={`fixed top-0 left-0 h-full bg-slate-900 text-white transition-all duration-300 z-50 ${
           sidebarOpen ? 'w-64' : 'w-20'
@@ -240,11 +242,11 @@ export default function Layout({ children }: LayoutProps) {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg text-white text-sm max-w-xs w-full animate-fade-in cursor-pointer ${
+            className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg text-white text-sm max-w-xs w-full cursor-pointer transition-all ${
               toast.type === 'lead' ? 'bg-green-600' : 'bg-blue-600'
             }`}
             onClick={() => {
-              if (toast.leadId) window.location.href = `/leads/${toast.leadId}`;
+              if (toast.leadId) window.location.href = `/leads/${toast.leadId}?tab=whatsapp`;
               setToasts((prev) => prev.filter((t) => t.id !== toast.id));
             }}
           >

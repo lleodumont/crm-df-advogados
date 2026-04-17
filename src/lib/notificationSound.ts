@@ -1,4 +1,5 @@
 let audioCtx: AudioContext | null = null;
+let audioUnlocked = false;
 
 function getAudioContext(): AudioContext {
   if (!audioCtx) {
@@ -9,14 +10,26 @@ function getAudioContext(): AudioContext {
 
 // Desbloqueia o AudioContext no primeiro gesto do usuário
 export function unlockAudio() {
+  if (audioUnlocked) return;
   try {
     const ctx = getAudioContext();
-    if (ctx.state === 'suspended') {
-      ctx.resume();
-    }
+    ctx.resume().then(() => { audioUnlocked = true; });
   } catch (e) {
     // ignore
   }
+}
+
+// Registra listeners globais para desbloquear no primeiro gesto
+export function setupAudioUnlock() {
+  const unlock = () => {
+    unlockAudio();
+    document.removeEventListener('click', unlock);
+    document.removeEventListener('keydown', unlock);
+    document.removeEventListener('touchstart', unlock);
+  };
+  document.addEventListener('click', unlock);
+  document.addEventListener('keydown', unlock);
+  document.addEventListener('touchstart', unlock);
 }
 
 export function playNotificationSound(type: 'message' | 'lead' = 'message') {
