@@ -693,7 +693,7 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
       />
 
       {/* Footer / Input */}
-      <div className="border-t border-gray-100 p-4 bg-gray-50/50 backdrop-blur-md">
+      <div className="border-t border-gray-100 p-4 bg-gray-50/50 backdrop-blur-md relative z-[60]">
         {/* Media Preview */}
         {mediaPreview && (
           <div className="mb-3 flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm max-w-4xl mx-auto">
