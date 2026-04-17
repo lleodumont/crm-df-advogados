@@ -168,14 +168,19 @@ export default function MarketingDashboard() {
   const totals = rows.reduce(
     (acc, r) => ({
       spend:   acc.spend   + r.spend,
-      leads:   acc.leads   + r.leads,
       sales:   acc.sales   + r.sales,
       revenue: acc.revenue + r.revenue,
     }),
-    { spend: 0, leads: 0, sales: 0, revenue: 0 }
+    { spend: 0, sales: 0, revenue: 0 }
   );
 
-  const avgCPL = totals.leads > 0 ? totals.spend / totals.leads : 0;
+  // Leads sempre do banco de dados — independe de campanhas Meta retornarem
+  const totalLeads = crmLeads.length;
+  const totalQualified = crmLeads.filter(
+    (l) => l.classification === 'qualificado' || l.classification === 'estrategico'
+  ).length;
+
+  const avgCPL = totalLeads > 0 ? totals.spend / totalLeads : 0;
   const avgCAC = totals.sales > 0 ? totals.spend / totals.sales : 0;
 
   const fmt = (n: number, decimals = 2) =>
@@ -240,7 +245,7 @@ export default function MarketingDashboard() {
           <KpiCard icon={<DollarSign className="w-5 h-5 text-orange-600" />} bg="bg-orange-50"
             label="Gasto Total" value={`R$ ${fmt(totals.spend)}`} />
           <KpiCard icon={<Users className="w-5 h-5 text-blue-600" />} bg="bg-blue-50"
-            label="Leads" value={String(totals.leads)} />
+            label="Leads" value={String(totalLeads)} />
           <KpiCard icon={<TrendingDown className="w-5 h-5 text-green-600" />} bg="bg-green-50"
             label="CPL Médio" value={avgCPL > 0 ? `R$ ${fmt(avgCPL)}` : '—'} />
           <KpiCard icon={<ShoppingCart className="w-5 h-5 text-purple-600" />} bg="bg-purple-50"
@@ -327,9 +332,9 @@ export default function MarketingDashboard() {
                   <td className="px-4 py-3">TOTAL</td>
                   <td className="px-4 py-3 text-right">R$ {fmt(totals.spend)}</td>
                   <td colSpan={3} />
-                  <td className="px-4 py-3 text-right text-blue-700">{totals.leads}</td>
+                  <td className="px-4 py-3 text-right text-blue-700">{totalLeads}</td>
                   <td className="px-4 py-3 text-right">{avgCPL > 0 ? `R$ ${fmt(avgCPL)}` : '—'}</td>
-                  <td className="px-4 py-3 text-right">{rows.reduce((a, r) => a + r.qualified, 0)}</td>
+                  <td className="px-4 py-3 text-right">{totalQualified}</td>
                   <td className="px-4 py-3 text-right text-purple-700">{totals.sales}</td>
                   <td className="px-4 py-3 text-right">R$ {fmt(totals.revenue)}</td>
                   <td className="px-4 py-3 text-right">{avgCAC > 0 ? `R$ ${fmt(avgCAC)}` : '—'}</td>
