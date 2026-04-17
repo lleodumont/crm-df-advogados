@@ -186,13 +186,30 @@ Deno.serve(async (req: Request) => {
 
     // Usar messageType do payload como fonte primária de detecção
     const rawType = (webhookData.messageType || "").toLowerCase();
-    const isMediaType = rawType.includes("image") || rawType.includes("video") || rawType.includes("audio") || rawType.includes("document") || rawType.includes("sticker");
+    const mimeLower = (webhookData.mimetype || "").toLowerCase();
+    const isMediaType = rawType.includes("image") || rawType.includes("video") || rawType.includes("audio")
+      || rawType.includes("document") || rawType.includes("sticker") || rawType.includes("ptt")
+      // UazAPI às vezes envia type genérico "media" — detectar pelo mimetype
+      || rawType === "media" || (rawType === "text" && mimeLower !== "" && !mimeLower.startsWith("text"));
 
     if (isMediaType) {
-      messageType = rawType.includes("image") || rawType.includes("sticker") ? "image"
-        : rawType.includes("video") ? "video"
-        : rawType.includes("audio") || rawType.includes("ptt") ? "audio"
-        : "document";
+      // Quando UazAPI envia tipo genérico ("media"), derivar do mimetype ou sub-objetos
+      const msg0 = webhookData.message || {};
+      if (rawType.includes("image") || rawType.includes("sticker") || mimeLower.startsWith("image")) {
+        messageType = "image";
+      } else if (rawType.includes("video") || mimeLower.startsWith("video")) {
+        messageType = "video";
+      } else if (rawType.includes("audio") || rawType.includes("ptt") || mimeLower.startsWith("audio")) {
+        messageType = "audio";
+      } else if (msg0.imageMessage) {
+        messageType = "image";
+      } else if (msg0.videoMessage) {
+        messageType = "video";
+      } else if (msg0.audioMessage) {
+        messageType = "audio";
+      } else {
+        messageType = "document";
+      }
 
       const msg = webhookData.message || {};
       const subMsg = msg[webhookData.messageType] || msg.imageMessage || msg.videoMessage || msg.audioMessage || msg.documentMessage || {};
