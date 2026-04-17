@@ -24,8 +24,8 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const token   = Deno.env.get("META_ACCESS_TOKEN")!;
-    const account = Deno.env.get("META_AD_ACCOUNT")!;
+    const token   = Deno.env.get("META_ACCESS_TOKEN");
+    const account = Deno.env.get("META_AD_ACCOUNT");
     const supabaseUrl      = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -70,10 +70,11 @@ Deno.serve(async (req: Request) => {
       level,
       time_range: JSON.stringify({ since, until }),
       limit: "100",
-      access_token: token,
     });
 
-    const metaRes = await fetch(`${BASE}/${account}/insights?${params}`);
+    const metaRes = await fetch(`${BASE}/${account}/insights?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!metaRes.ok) {
       const errText = await metaRes.text();
       console.error("Meta API error:", errText);
