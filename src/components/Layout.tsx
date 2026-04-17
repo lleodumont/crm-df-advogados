@@ -23,7 +23,11 @@ export default function Layout({ children }: LayoutProps) {
   const [unreadLeads, setUnreadLeads] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('unread_leads');
-      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+      const all = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+      // Se já estamos na página de um lead, marca como lido imediatamente
+      const match = window.location.pathname.match(/^\/leads\/([^/]+)/);
+      if (match) { all.delete(match[1]); localStorage.setItem('unread_leads', JSON.stringify([...all])); }
+      return all;
     } catch { return new Set<string>(); }
   });
   const [newLeads, setNewLeads] = useState(0);
