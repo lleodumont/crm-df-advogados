@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { playNotificationSound, setupAudioUnlock } from '../lib/notificationSound';
@@ -26,11 +26,19 @@ export default function Layout({ children }: LayoutProps) {
   const toastIdRef = useRef(0);
   const currentPathRef = useRef(window.location.pathname);
 
-  const addToastRef = useRef((toast: Omit<Toast, 'id'>) => {
+  const addToast = useCallback((toast: Omit<Toast, 'id'>) => {
     const id = ++toastIdRef.current;
     setToasts((prev) => [...prev, { ...toast, id }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
-  });
+  }, []);
+
+  const removeToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const markLeadRead = useCallback((leadId: string) => {
+    setUnreadLeads((prev) => { const s = new Set(prev); s.delete(leadId); return s; });
+  }, []);
 
   useEffect(() => {
     const fetchStale = async () => {
@@ -59,7 +67,7 @@ export default function Layout({ children }: LayoutProps) {
               if (leadId) {
                 setUnreadLeads((prev) => new Set([...prev, leadId]));
               }
-              addToastRef.current({
+              addToast({
                 type: 'message',
                 title: 'Nova mensagem',
                 body: payload.new.content || 'Mensagem recebida',
@@ -80,7 +88,7 @@ export default function Layout({ children }: LayoutProps) {
           if (payload.new?.source === 'whatsapp') {
             playNotificationSound('lead');
             setNewLeads((n) => n + 1);
-            addToastRef.current({
+            addToast({
               type: 'lead',
               title: 'Novo lead via WhatsApp',
               body: payload.new.full_name || payload.new.phone || 'Novo contato',
@@ -95,7 +103,7 @@ export default function Layout({ children }: LayoutProps) {
       const path = window.location.pathname;
       currentPathRef.current = path;
       const match = path.match(/^\/leads\/([^/]+)/);
-      if (match) setUnreadLeads((prev) => { const s = new Set(prev); s.delete(match[1]); return s; });
+      if (match) markLeadRead(match[1]);
     };
     window.addEventListener('popstate', updatePath);
 
@@ -104,7 +112,7 @@ export default function Layout({ children }: LayoutProps) {
       supabase.removeChannel(leadChannel);
       window.removeEventListener('popstate', updatePath);
     };
-  }, []);
+  }, [addToast, markLeadRead]);
 
   const navItems = [
     { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -244,20 +252,19 @@ export default function Layout({ children }: LayoutProps) {
         </div>
       </main>
 
-      {/* Toast notifications */}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 items-end">
+      <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg text-white text-sm max-w-xs w-full cursor-pointer transition-all ${
+            className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg text-white text-sm max-w-xs w-full cursor-pointer ${
               toast.type === 'lead' ? 'bg-green-600' : 'bg-blue-600'
             }`}
             onClick={() => {
               if (toast.leadId) {
-                setUnreadLeads((prev) => { const s = new Set(prev); s.delete(toast.leadId!); return s; });
+                markLeadRead(toast.leadId);
                 window.location.href = `/leads/${toast.leadId}?tab=whatsapp`;
               }
-              setToasts((prev) => prev.filter((t) => t.id !== toast.id));
+              removeToast(toast.id);
             }}
           >
             <div className="flex-shrink-0 mt-0.5">
@@ -268,7 +275,7 @@ export default function Layout({ children }: LayoutProps) {
               <p className="text-white/80 text-xs mt-0.5 truncate">{toast.body}</p>
             </div>
             <button
-              onClick={(e) => { e.stopPropagation(); setToasts((prev) => prev.filter((t) => t.id !== toast.id)); }}
+              onClick={(e) => { e.stopPropagation(); removeToast(toast.id); }}
               className="flex-shrink-0 text-white/70 hover:text-white"
             >
               <X className="w-4 h-4" />
