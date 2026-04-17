@@ -15,6 +15,7 @@ interface MetaCampaign {
   ctr: string;
 }
 interface CrmLead {
+  id: string;
   campaign_id: string | null;
   utm_campaign: string | null;
   classification: string;
@@ -91,7 +92,7 @@ export default function MarketingDashboard() {
   const loadCrm = async () => {
     const { data } = await supabase
       .from('leads')
-      .select('campaign_id, utm_campaign, classification, status, created_at')
+      .select('id, campaign_id, utm_campaign, classification, status, created_at')
       .gte('created_at', range.since)
       .lte('created_at', range.until + 'T23:59:59');
     setCrmLeads((data as CrmLead[]) ?? []);
@@ -111,13 +112,13 @@ export default function MarketingDashboard() {
     const rows: CampaignRow[] = metaCampaigns.map((mc) => {
       const leads = crmLeads.filter(
         (l) => l.campaign_id === mc.campaign_id ||
-               (l.utm_campaign && mc.campaign_name.toLowerCase().includes(l.utm_campaign.toLowerCase()))
+               (l.utm_campaign && l.utm_campaign.toLowerCase().includes(mc.campaign_name.toLowerCase()))
       );
       const qualified = leads.filter(
         (l) => l.classification === 'qualificado' || l.classification === 'estrategico'
       ).length;
 
-      const leadIds = leads.map((l: any) => l.id).filter(Boolean);
+      const leadIds = leads.map((l) => l.id).filter(Boolean);
       const sales = eduzzSales.filter(
         (s) => (s.lead_id && leadIds.includes(s.lead_id)) ||
                (s.utm_campaign === mc.campaign_name)
