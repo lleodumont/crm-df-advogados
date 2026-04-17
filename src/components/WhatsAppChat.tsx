@@ -516,12 +516,6 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
                 </h2>
                 <div className="text-xs font-medium text-gray-500 mt-0.5 flex items-center gap-2">
                   {leadPhone}
-                  {(selectedInstance && instances.find(i=>i.instance_id === selectedInstance)?.status === 'connected') && (
-                     <span className="flex items-center gap-1 text-emerald-600 text-[10px] uppercase font-black">
-                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                       Online
-                     </span>
-                  )}
                 </div>
               </div>
             </div>
