@@ -66,7 +66,7 @@ export default function Layout({ children }: LayoutProps) {
           }
         }
       )
-      .subscribe();
+      .subscribe(() => {});
 
     const leadChannel = supabase
       .channel('global_new_leads')
