@@ -20,7 +20,12 @@ export default function Layout({ children }: LayoutProps) {
   const { profile, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [staleLeadsCount, setStaleLeadsCount] = useState(0);
-  const [unreadLeads, setUnreadLeads] = useState<Set<string>>(new Set());
+  const [unreadLeads, setUnreadLeads] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('unread_leads');
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
   const [newLeads, setNewLeads] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
@@ -37,7 +42,12 @@ export default function Layout({ children }: LayoutProps) {
   }, []);
 
   const markLeadRead = useCallback((leadId: string) => {
-    setUnreadLeads((prev) => { const s = new Set(prev); s.delete(leadId); return s; });
+    setUnreadLeads((prev) => {
+      const s = new Set(prev);
+      s.delete(leadId);
+      localStorage.setItem('unread_leads', JSON.stringify([...s]));
+      return s;
+    });
   }, []);
 
   useEffect(() => {
@@ -53,8 +63,10 @@ export default function Layout({ children }: LayoutProps) {
   useEffect(() => {
     setupAudioUnlock();
 
+    const uid = Math.random().toString(36).slice(2);
+
     const msgChannel = supabase
-      .channel('global_new_messages')
+      .channel(`global_new_messages_${uid}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
@@ -65,7 +77,11 @@ export default function Layout({ children }: LayoutProps) {
             if (!onLeadChat) {
               playNotificationSound('message');
               if (leadId) {
-                setUnreadLeads((prev) => new Set([...prev, leadId]));
+                setUnreadLeads((prev) => {
+                  const s = new Set([...prev, leadId]);
+                  localStorage.setItem('unread_leads', JSON.stringify([...s]));
+                  return s;
+                });
               }
               addToast({
                 type: 'message',
@@ -80,7 +96,7 @@ export default function Layout({ children }: LayoutProps) {
       .subscribe(() => {});
 
     const leadChannel = supabase
-      .channel('global_new_leads')
+      .channel(`global_new_leads_${uid}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'leads' },
