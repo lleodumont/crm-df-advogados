@@ -1,7 +1,8 @@
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Scale, LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers } from 'lucide-react';
-import { useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { playNotificationSound } from '../lib/notificationSound';
+import { LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers, TableProperties, AlertTriangle, BarChart2 } from 'lucide-react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -10,6 +11,62 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const { profile, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [staleLeadsCount, setStaleLeadsCount] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [newLeads, setNewLeads] = useState(0);
+  const currentPathRef = useRef(window.location.pathname);
+
+  useEffect(() => {
+    const fetchStale = async () => {
+      const { data } = await supabase.from('vw_stale_strategic_leads').select('lead_id');
+      setStaleLeadsCount(data?.length ?? 0);
+    };
+    fetchStale();
+    const interval = setInterval(fetchStale, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const msgChannel = supabase
+      .channel('global_new_messages')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'whatsapp_messages' },
+        (payload) => {
+          if (payload.new?.direction === 'inbound') {
+            const onLeadChat = currentPathRef.current.includes(`/leads/${payload.new.lead_id}`);
+            if (!onLeadChat) {
+              playNotificationSound('message');
+              setUnreadMessages((n) => n + 1);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    const leadChannel = supabase
+      .channel('global_new_leads')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'leads' },
+        (payload) => {
+          if (payload.new?.source === 'whatsapp') {
+            playNotificationSound('lead');
+            setNewLeads((n) => n + 1);
+          }
+        }
+      )
+      .subscribe();
+
+    const updatePath = () => { currentPathRef.current = window.location.pathname; };
+    window.addEventListener('popstate', updatePath);
+
+    return () => {
+      supabase.removeChannel(msgChannel);
+      supabase.removeChannel(leadChannel);
+      window.removeEventListener('popstate', updatePath);
+    };
+  }, []);
 
   const navItems = [
     { href: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -21,9 +78,13 @@ export default function Layout({ children }: LayoutProps) {
     { href: '/stages', icon: Layers, label: 'Etapas' },
     { href: '/instructions', icon: BookOpen, label: 'Instruções' },
     { href: '/report', icon: FileText, label: 'Relatório Semanal' },
+    { href: '/attendance-report', icon: BarChart2, label: 'Atendimentos' },
     { href: '/leads/import', icon: Upload, label: 'Importar Leads' },
     ...(profile?.role === 'admin' || profile?.role === 'manager' ? [{ href: '/whatsapp-settings', icon: MessageCircle, label: 'Config WhatsApp' }] : []),
-    ...(profile?.role === 'admin' ? [{ href: '/users', icon: UserCog, label: 'Usuários' }] : []),
+    ...(profile?.role === 'admin' ? [
+      { href: '/custom-fields', icon: TableProperties, label: 'Campos Per.' },
+      { href: '/users', icon: UserCog, label: 'Usuários' }
+    ] : []),
   ];
 
   const handleSignOut = async () => {
@@ -45,10 +106,9 @@ export default function Layout({ children }: LayoutProps) {
           {sidebarOpen ? (
             <>
               <div className="flex items-center gap-3">
-                <Scale className="w-8 h-8" />
                 <div>
-                  <h1 className="font-bold text-lg">DF CRM</h1>
-                  <p className="text-xs text-slate-400">Divórcios</p>
+                  <h1 className="font-bold text-lg">Fábrica de Líderes</h1>
+                  <p className="text-xs text-slate-400">CRM</p>
                 </div>
               </div>
               <button
@@ -72,11 +132,17 @@ export default function Layout({ children }: LayoutProps) {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = window.location.pathname === item.href;
+            const isLeads = item.href === '/leads';
+            const isConversas = item.href === '/whatsapp-conversations';
 
             return (
               <a
                 key={item.href}
                 href={item.href}
+                onClick={() => {
+                  if (isConversas) setUnreadMessages(0);
+                  if (isLeads) setNewLeads(0);
+                }}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                   isActive
                     ? 'bg-slate-800 text-white'
@@ -86,6 +152,21 @@ export default function Layout({ children }: LayoutProps) {
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
                 {sidebarOpen && <span className="font-medium">{item.label}</span>}
+                {isLeads && staleLeadsCount > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {staleLeadsCount > 9 ? '9+' : staleLeadsCount}
+                  </span>
+                )}
+                {isLeads && newLeads > 0 && (
+                  <span className={`${staleLeadsCount > 0 ? 'ml-1' : 'ml-auto'} bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center`}>
+                    {newLeads > 9 ? '9+' : newLeads}
+                  </span>
+                )}
+                {isConversas && unreadMessages > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                    {unreadMessages > 9 ? '9+' : unreadMessages}
+                  </span>
+                )}
               </a>
             );
           })}
@@ -114,6 +195,13 @@ export default function Layout({ children }: LayoutProps) {
           sidebarOpen ? 'ml-64' : 'ml-20'
         }`}
       >
+        {staleLeadsCount > 0 && (
+          <div className="bg-amber-50 border-b border-amber-200 px-6 py-2 flex items-center gap-2 text-sm text-amber-800">
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
+            <span><strong>{staleLeadsCount} lead{staleLeadsCount > 1 ? 's' : ''} estratégico{staleLeadsCount > 1 ? 's' : ''}</strong> sem atividade há mais de 24h</span>
+            <a href="/leads?stale=true" className="ml-auto text-amber-700 underline font-medium">Ver agora</a>
+          </div>
+        )}
         <div className="p-8">
           {children}
         </div>
