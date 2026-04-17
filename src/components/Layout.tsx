@@ -125,12 +125,16 @@ export default function Layout({ children }: LayoutProps) {
       const match = path.match(/^\/leads\/([^/]+)/);
       if (match) markLeadRead(match[1]);
     };
+    const onLeadRead = (e: Event) => markLeadRead((e as CustomEvent).detail.leadId);
+
     window.addEventListener('popstate', updatePath);
+    window.addEventListener('lead:read', onLeadRead);
 
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(leadChannel);
       window.removeEventListener('popstate', updatePath);
+      window.removeEventListener('lead:read', onLeadRead);
     };
   }, [addToast, markLeadRead]);
 
