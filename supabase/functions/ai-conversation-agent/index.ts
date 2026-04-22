@@ -254,26 +254,58 @@ Deno.serve(async (req: Request) => {
 
     // ── 1. Busca ou cria estado da conversa ───────────────────────────────
 
-    let { data: state } = await supabase
+    // Upsert atômico: cria se não existe, retorna existente se já existe
+    // Evita race condition quando Meta entrega o mesmo webhook 2x
+    const { data: upsertedState, error: upsertError } = await supabase
       .from("ai_conversation_state")
+      .upsert(
+        { phone, lead_id, status: "ativo", turno: 0, dados_coletados: {} },
+        { onConflict: "phone", ignoreDuplicates: true }
+      )
       .select("*")
-      .eq("phone", phone)
-      .maybeSingle() as { data: ConversationState | null };
+      .maybeSingle() as { data: ConversationState | null; error: unknown };
 
-    // Se já está em handoff ou encerrado, não responde
-    if (state && state.status !== "ativo") {
+    // Se ignoreDuplicates=true e já existia, upsert retorna null — busca explícita
+    let state: ConversationState | null = upsertedState;
+    if (!state) {
+      const { data: existing } = await supabase
+        .from("ai_conversation_state")
+        .select("*")
+        .eq("phone", phone)
+        .maybeSingle() as { data: ConversationState | null };
+      state = existing;
+    }
+
+    if (!state) {
+      console.error("Failed to create or fetch conversation state", upsertError);
+      return new Response(JSON.stringify({ error: "state_error" }), { status: 500 });
+    }
+
+    // Se já está em handoff, nutricao ou encerrado, não responde
+    if (state.status !== "ativo") {
       console.log(`Conversation ${phone} is ${state.status} — skipping`);
       return new Response(JSON.stringify({ skipped: true, reason: state.status }), { status: 200 });
     }
 
-    if (!state) {
-      const { data: newState } = await supabase
-        .from("ai_conversation_state")
-        .insert({ phone, lead_id, status: "ativo", turno: 0, dados_coletados: {} })
-        .select("*")
-        .single() as { data: ConversationState };
-      state = newState;
+    // Anti-duplicate: incrementa turno atomicamente e verifica se já foi processado
+    // Se dois requests chegam juntos, apenas um consegue incrementar de turno N para N+1
+    const expectedTurno = state.turno;
+    const { data: lockedState, error: lockError } = await supabase
+      .from("ai_conversation_state")
+      .update({ turno: expectedTurno + 1 })
+      .eq("phone", phone)
+      .eq("turno", expectedTurno)
+      .select("*")
+      .maybeSingle() as { data: ConversationState | null; error: unknown };
+
+    if (!lockedState) {
+      // Outro request já processou este turno (race condition detectada)
+      console.warn(`Race condition detected for ${phone} at turno ${expectedTurno} — skipping duplicate`);
+      return new Response(JSON.stringify({ skipped: true, reason: "duplicate" }), { status: 200 });
     }
+
+    // Usa o estado com turno já incrementado
+    state = { ...lockedState, turno: expectedTurno }; // turno original para contexto
 
     // ── 2. Carrega config do agente ───────────────────────────────────────
 
@@ -305,6 +337,7 @@ Deno.serve(async (req: Request) => {
       .from("whatsapp_messages")
       .select("direction, content, message_type, created_at")
       .eq("phone_number", phone)
+      .gte("created_at", state.created_at) // isola mensagens da conversa atual
       .order("created_at", { ascending: true })
       .limit(MAX_HISTORY_MESSAGES);
 
@@ -319,7 +352,11 @@ Deno.serve(async (req: Request) => {
       ? `\n\nDADOS JÁ COLETADOS NESTA CONVERSA (não pergunte novamente):\n${JSON.stringify(state.dados_coletados, null, 2)}`
       : "";
 
-    const systemWithContext = config.system_prompt + dadosColetadosCtx;
+    const turnoCtx = state.turno > 0
+      ? `\n\nCONTEXTO DO TURNO ATUAL: Este é o turno ${state.turno + 1} da conversa. A saudação inicial (Fase 0) JÁ FOI ENVIADA — NÃO repita "Olá! Aqui é a Rafaela...". Continue a conversa exatamente de onde o histórico acima parou.`
+      : "";
+
+    const systemWithContext = config.system_prompt + dadosColetadosCtx + turnoCtx;
 
     // ── 5. Chama Claude API ───────────────────────────────────────────────
 
@@ -351,7 +388,11 @@ Deno.serve(async (req: Request) => {
 
     // ── 8. Atualiza dados coletados e turno ───────────────────────────────
 
-    const newDados = { ...state.dados_coletados, ...agentResponse.dados_coletados };
+    // Merge apenas valores não-nulos: evita sobrescrever dados já coletados com null
+    const newDados = { ...state.dados_coletados };
+    for (const [key, value] of Object.entries(agentResponse.dados_coletados)) {
+      if (value !== null && value !== undefined) newDados[key] = value;
+    }
     const newTurno = state.turno + 1;
 
     // ── 9. Executa ação ───────────────────────────────────────────────────
@@ -368,9 +409,8 @@ Deno.serve(async (req: Request) => {
       .update({
         status: newStatus,
         classificacao: agentResponse.classificacao,
-        tipo_demanda: newDados.tipo_demanda as string ?? state.tipo_demanda,
+        tipo_demanda: (newDados.tipo_demanda as string) ?? state.tipo_demanda,
         dados_coletados: newDados,
-        turno: newTurno,
       })
       .eq("phone", phone);
 
