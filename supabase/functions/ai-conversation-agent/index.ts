@@ -231,7 +231,17 @@ async function callClaude(
 
   // Extrai JSON da resposta (Claude pode incluir texto antes/depois)
   const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error(`Claude response is not JSON: ${rawText}`);
+
+  // Fallback: se Claude respondeu em texto puro, usa o texto como mensagem e continua
+  if (!jsonMatch) {
+    console.warn("Claude response was not JSON — using raw text as message:", rawText.slice(0, 100));
+    return {
+      mensagem: rawText.trim(),
+      acao: "continuar",
+      classificacao: null,
+      dados_coletados: {},
+    };
+  }
 
   return JSON.parse(jsonMatch[0]) as AgentResponse;
 }
@@ -359,7 +369,9 @@ Deno.serve(async (req: Request) => {
       ? `\n\nCONTEXTO DO TURNO ATUAL: Este é o turno ${state.turno + 1} da conversa. A saudação inicial (Fase 0) JÁ FOI ENVIADA — NÃO repita "Olá! Aqui é a Rafaela...". Continue a conversa exatamente de onde o histórico acima parou.`
       : "";
 
-    const systemWithContext = config.system_prompt + dadosColetadosCtx + turnoCtx;
+    const formatReminder = `\n\n⚠️ LEMBRETE CRÍTICO: Você DEVE responder SEMPRE em JSON válido. NUNCA responda em texto puro. Sua resposta deve começar com { e terminar com }. Formato obrigatório: {"mensagem": "...", "acao": "continuar", "classificacao": null, "dados_coletados": {}}`;
+
+    const systemWithContext = config.system_prompt + dadosColetadosCtx + turnoCtx + formatReminder;
 
     // ── 5. Chama Claude API ───────────────────────────────────────────────
 
