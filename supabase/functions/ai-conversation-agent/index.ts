@@ -333,18 +333,21 @@ Deno.serve(async (req: Request) => {
 
     // ── 3. Busca histórico da conversa (últimas N mensagens) ──────────────
 
+    // Busca as últimas N mensagens (desc) e inverte para ordem cronológica
+    // Não filtramos por created_at do state pois a mensagem é salva antes do state ser criado
     const { data: history } = await supabase
       .from("whatsapp_messages")
       .select("direction, content, message_type, created_at")
       .eq("phone_number", phone)
-      .gte("created_at", state.created_at) // isola mensagens da conversa atual
-      .order("created_at", { ascending: true })
+      .order("created_at", { ascending: false })
       .limit(MAX_HISTORY_MESSAGES);
 
-    const messages: { role: "user" | "assistant"; content: string }[] = (history || []).map((msg) => ({
-      role: msg.direction === "inbound" ? "user" : "assistant",
-      content: msg.content || "",
-    }));
+    const messages: { role: "user" | "assistant"; content: string }[] = (history || [])
+      .reverse()
+      .map((msg) => ({
+        role: msg.direction === "inbound" ? "user" : "assistant",
+        content: msg.content || "",
+      }));
 
     // ── 4. Adiciona contexto dos dados já coletados ao system prompt ──────
 
