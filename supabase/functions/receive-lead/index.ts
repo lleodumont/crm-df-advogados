@@ -134,10 +134,9 @@ function calculateScore(formResponses: FormResponse[], familyIncomeRange?: strin
 
 // Função para determinar classificação baseada no score
 function getClassification(totalScore: number): string {
-  if (totalScore >= 80) return "hot";
-  if (totalScore >= 60) return "warm";
-  if (totalScore >= 40) return "cold";
-  return "unqualified";
+  if (totalScore >= 70) return "estrategico";
+  if (totalScore >= 40) return "qualificado";
+  return "morno";
 }
 
 Deno.serve(async (req: Request) => {
@@ -191,13 +190,13 @@ Deno.serve(async (req: Request) => {
         state: payload.state || null,
         source: payload.source || "meta_ads",
         campaign: payload.campaign || null,
-        status: "new",
+        status: "novo",
         classification: classification,
         score_decision: scores.score_decision,
         score_urgency: scores.score_urgency,
         score_assets: scores.score_assets,
         score_fit: scores.score_fit,
-        total_score: scores.total_score,
+        score_total: scores.total_score,
         utm_source: payload.utm_source || null,
         utm_medium: payload.utm_medium || null,
         utm_campaign: payload.utm_campaign || null,
