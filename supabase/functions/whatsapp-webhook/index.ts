@@ -71,7 +71,7 @@ Deno.serve(async (req: Request) => {
 
   const verifyToken = Deno.env.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN");
   const webhookSecret = Deno.env.get("WHATSAPP_WEBHOOK_SECRET");
-  const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN")!;
+  const fallbackAccessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN") ?? "";;
 
   // ── GET: Meta webhook verification ──────────────────────────────────────────
   if (req.method === "GET") {
@@ -122,6 +122,30 @@ Deno.serve(async (req: Request) => {
 
     const payload = JSON.parse(rawBody);
     console.log("Webhook payload:", JSON.stringify(payload));
+
+    // Resolve access token: prefer instance-specific token from DB, fall back to env var
+    const phoneNumberIdFromPayload: string | undefined =
+      payload?.entry?.[0]?.changes?.[0]?.value?.metadata?.phone_number_id;
+
+    // Só processar mensagens do número principal configurado
+    const allowedPhoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
+    if (allowedPhoneNumberId && phoneNumberIdFromPayload && phoneNumberIdFromPayload !== allowedPhoneNumberId) {
+      console.log(`Ignoring message for phone_number_id ${phoneNumberIdFromPayload} (allowed: ${allowedPhoneNumberId})`);
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let accessToken = fallbackAccessToken;
+    if (phoneNumberIdFromPayload) {
+      const { data: instance } = await supabase
+        .from("whatsapp_instances")
+        .select("access_token")
+        .eq("phone_number_id", phoneNumberIdFromPayload)
+        .maybeSingle();
+      if (instance?.access_token) accessToken = instance.access_token;
+    }
 
     const changes = payload?.entry?.[0]?.changes ?? [];
 
@@ -182,11 +206,27 @@ Deno.serve(async (req: Request) => {
           content = `[${rawType} message]`;
         }
 
-        const { data: lead } = await supabase
+        // Upsert garante que não haverá lead duplicado mesmo com chamadas paralelas
+        const contactName = contacts.find((c: any) => c.wa_id === fromRaw || normalizePhone(c.wa_id) === cleanPhone)?.profile?.name ?? cleanPhone;
+        const { data: upsertedLead } = await supabase
           .from("leads")
+          .upsert(
+            { full_name: contactName, phone: cleanPhone, source: "whatsapp", status: "novo" },
+            { onConflict: "phone", ignoreDuplicates: true }
+          )
           .select("id")
-          .eq("phone", cleanPhone)
           .maybeSingle();
+
+        // Se não retornou (lead já existia), busca pelo telefone
+        let lead = upsertedLead;
+        if (!lead) {
+          const { data: existing } = await supabase
+            .from("leads")
+            .select("id")
+            .eq("phone", cleanPhone)
+            .maybeSingle();
+          lead = existing;
+        }
 
         await supabase
           .from("whatsapp_messages")
@@ -205,6 +245,27 @@ Deno.serve(async (req: Request) => {
             },
             { onConflict: "external_id", ignoreDuplicates: true }
           );
+
+        // Fire-and-forget: chama o agente de IA para processar a mensagem
+        // Não aguardamos a resposta para retornar 200 à Meta rapidamente
+        if (!downloadFailed && content) {
+          const agentUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-conversation-agent`;
+          fetch(agentUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            },
+            body: JSON.stringify({
+              message_id: wamid,
+              phone: cleanPhone,
+              lead_id: lead?.id ?? null,
+              content,
+              message_type: messageType,
+              media_url: mediaUrl,
+            }),
+          }).catch((e) => console.error("ai-agent call failed:", e));
+        }
       }
     }
 
