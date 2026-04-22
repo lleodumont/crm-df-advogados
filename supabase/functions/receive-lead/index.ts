@@ -29,6 +29,10 @@ interface LeadPayload {
   ad_id?: string;
   form_responses?: FormResponse[];
   family_income_range?: string;
+  // Campos de qualificação enviados diretamente (landing pages, N8N, Make, Zapier)
+  cargo?: string;
+  num_colaboradores?: string;
+  faturamento_mensal?: string;
 }
 
 // Função para calcular score baseado nas respostas
@@ -221,18 +225,36 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Inserir respostas do formulário se existirem
-    if (payload.form_responses && payload.form_responses.length > 0) {
-      const answersToInsert = payload.form_responses.map((response) => ({
-        lead_id: leadData.id,
-        question_key: response.question
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "_")
-          .replace(/^_+|_+$/g, ""),
-        answer_value: response.answer,
-        source: "meta_form",
-      }));
+    // Inserir respostas do formulário
+    const answersToInsert: { lead_id: string; question_key: string; answer_value: string; source: string }[] = [];
 
+    // Formato array (Meta Lead Ads direto)
+    if (payload.form_responses && payload.form_responses.length > 0) {
+      for (const response of payload.form_responses) {
+        answersToInsert.push({
+          lead_id: leadData.id,
+          question_key: response.question
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, ""),
+          answer_value: response.answer,
+          source: "meta_form",
+        });
+      }
+    }
+
+    // Campos flat (landing pages, N8N, Make, Zapier)
+    if (payload.cargo) {
+      answersToInsert.push({ lead_id: leadData.id, question_key: "cargo", answer_value: payload.cargo, source: "meta_form" });
+    }
+    if (payload.num_colaboradores) {
+      answersToInsert.push({ lead_id: leadData.id, question_key: "num_colaboradores", answer_value: payload.num_colaboradores, source: "meta_form" });
+    }
+    if (payload.faturamento_mensal) {
+      answersToInsert.push({ lead_id: leadData.id, question_key: "faturamento_mensal", answer_value: payload.faturamento_mensal, source: "meta_form" });
+    }
+
+    if (answersToInsert.length > 0) {
       const { error: answersError } = await supabase
         .from("lead_answers")
         .insert(answersToInsert);
