@@ -2,7 +2,7 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { playNotificationSound, setupAudioUnlock } from '../lib/notificationSound';
-import { LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers, TableProperties, AlertTriangle, BarChart2, X, UserPlus, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Users, GitBranch, FileText, Upload, LogOut, Menu, UserCog, Calendar, BookOpen, MessageCircle, Tag, Layers, TableProperties, AlertTriangle, BarChart2, X, UserPlus, TrendingUp, ShoppingBag } from 'lucide-react';
 
 interface Toast {
   id: number;
@@ -164,6 +164,7 @@ export default function Layout({ children }: LayoutProps) {
     { href: '/report', icon: FileText, label: 'Relatório Semanal' },
     { href: '/attendance-report', icon: BarChart2, label: 'Atendimentos' },
     { href: '/marketing', icon: TrendingUp, label: 'Marketing' },
+    { href: '/base-clientes', icon: ShoppingBag, label: 'Base de Clientes' },
     { href: '/leads/import', icon: Upload, label: 'Importar Leads' },
     ...(profile?.role === 'admin' || profile?.role === 'manager' ? [{ href: '/whatsapp-settings', icon: MessageCircle, label: 'Config WhatsApp' }] : []),
     ...(profile?.role === 'admin' ? [

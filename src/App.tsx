@@ -21,6 +21,7 @@ const Stages = lazy(() => import('./pages/Stages'));
 const CustomFields = lazy(() => import('./pages/CustomFields'));
 const AttendanceReport = lazy(() => import('./pages/AttendanceReport'));
 const MarketingDashboard = lazy(() => import('./pages/MarketingDashboard'));
+const BaseClientes = lazy(() => import('./pages/BaseClientes'));
 
 function PageLoader() {
   return (
@@ -63,6 +64,7 @@ function Router() {
   if (path === '/users') return <Users />;
   if (path === '/attendance-report') return <AttendanceReport />;
   if (path === '/marketing') return <MarketingDashboard />;
+  if (path === '/base-clientes') return <BaseClientes />;
 
   return <Dashboard />;
 }
