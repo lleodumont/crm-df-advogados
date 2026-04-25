@@ -165,9 +165,9 @@ export default function Layout({ children }: LayoutProps) {
     { href: '/attendance-report', icon: BarChart2, label: 'Atendimentos' },
     { href: '/marketing', icon: TrendingUp, label: 'Marketing' },
     { href: '/base-clientes', icon: ShoppingBag, label: 'Base de Clientes' },
-    { href: '/leads/import', icon: Upload, label: 'Importar Leads' },
     ...(profile?.role === 'admin' || profile?.role === 'manager' ? [{ href: '/whatsapp-settings', icon: MessageCircle, label: 'Config WhatsApp' }] : []),
     ...(profile?.role === 'admin' ? [
+      { href: '/leads/import', icon: Upload, label: 'Importar Leads' },
       { href: '/custom-fields', icon: TableProperties, label: 'Campos Per.' },
       { href: '/users', icon: UserCog, label: 'Usuários' }
     ] : []),
