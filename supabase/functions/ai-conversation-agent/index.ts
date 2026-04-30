@@ -94,17 +94,17 @@ async function sendUazapiGroupMessage(
     return;
   }
 
-  const res = await fetch(`${uazapi.base_url}/message/sendText/${uazapi.sdr_group_id}`, {
+  const headers = { "Content-Type": "application/json", "token": uazapi.api_key };
+
+  const res = await fetch(`${uazapi.base_url}/send/text`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": uazapi.api_key,
-    },
-    body: JSON.stringify({ text: message }),
+    headers,
+    body: JSON.stringify({ number: uazapi.sdr_group_id, text: message }),
   });
 
+  const responseText = await res.text();
   if (!res.ok) {
-    console.error("UAZAPI error:", await res.text());
+    console.error(`UAZAPI error: ${res.status} — ${responseText.slice(0, 200)}`);
   } else {
     console.log("SDR group notified via UAZAPI");
   }
@@ -112,87 +112,54 @@ async function sendUazapiGroupMessage(
 
 // ── Build SDR summary message ──────────────────────────────────────────────
 
-function buildSdrSummary(
+function buildSdrHeader(
   leadName: string,
   phone: string,
   classificacao: string | null,
-  dados: Record<string, unknown>,
   acao: string,
-  resumo: string
+  leadId: string | null
 ): string {
+  const crmBase = (Deno.env.get("CRM_BASE_URL") ?? "").replace(/\/$/, "");
+  const crmLink = crmBase && leadId ? `\n🔗 *CRM:* ${crmBase}/leads/${leadId}` : "";
+
   if (acao === "handoff_qualificado") {
     const classLabel = classificacao === "estrategico" ? "⭐⭐ Estratégico" : "⭐ Qualificado";
-    return [
-      `🔔 *NOVO LEAD QUALIFICADO*`,
-      ``,
-      `👤 *Nome:* ${leadName}`,
-      `📱 *Telefone:* ${phone}`,
-      `${classLabel}`,
-      ``,
-      `━━━━━━━━━━━━━━━━━`,
-      `📌 *SITUAÇÃO*`,
-      `• Separados de fato: ${dados.separados_de_fato ? `Sim${dados.tempo_separacao ? ` — ${dados.tempo_separacao}` : ""}` : "Não"}`,
-      `• Ainda moram juntos: ${dados.moram_juntos ? "Sim" : "Não"}`,
-      `• Processo judicial: ${dados.processo_ativo ? "Sim" : "Não"}`,
-      ``,
-      `👨‍👩‍👧 *FILHOS*`,
-      `• ${dados.filhos ? `${dados.qtd_filhos || "Sim"} — idades: ${dados.idades_filhos || "não informado"}` : "Não tem"}`,
-      `• Guarda: ${dados.guarda_definida ? "Definida" : "Não definida"}`,
-      `• Pensão: ${dados.pensao_definida ? "Definida" : "Não definida"}`,
-      ``,
-      `🏠 *BENS*`,
-      `• Imóveis: ${dados.imoveis ? "Sim" : "Não"}`,
-      `• Veículos: ${dados.veiculos ? "Sim" : "Não"}`,
-      `• Investimentos: ${dados.investimentos ? "Sim" : "Não"}`,
-      `• Empresa: ${dados.empresa ? "Sim" : "Não"}`,
-      ``,
-      `📋 *Regime de bens:* ${dados.regime_bens || "não informado"}`,
-      ``,
-      `💰 *RENDA*`,
-      `• Lead: ${dados.profissao_lead || "?"} — ${dados.renda_lead || "não informado"}`,
-      `• Ex-cônjuge: ${dados.profissao_ex || "?"} — ${dados.renda_ex || "não informado"}`,
-      ``,
-      `━━━━━━━━━━━━━━━━━`,
-      `💬 *CONTEXTO*`,
-      resumo,
-    ].join("\n");
+    return [`🔔 *NOVO LEAD QUALIFICADO*`, ``, `👤 *Nome:* ${leadName}`, `📱 *Telefone:* ${phone}`, `${classLabel}${crmLink}`].join("\n");
   }
-
   if (acao === "handoff_processo_ativo") {
-    return [
-      `⚠️ *LEAD COM PROCESSO ATIVO*`,
-      ``,
-      `👤 *Nome:* ${leadName}`,
-      `📱 *Telefone:* ${phone}`,
-      ``,
-      `━━━━━━━━━━━━━━━━━`,
-      `📌 *SITUAÇÃO*`,
-      `• Já possui processo litigioso em andamento`,
-      `• Cópia do processo: a caminho`,
-      ``,
-      `📋 *Dados coletados:*`,
-      `• Regime de bens: ${dados.regime_bens || "não informado"}`,
-      `• Filhos: ${dados.filhos ? `${dados.qtd_filhos || "sim"} — ${dados.idades_filhos || ""}` : "Não"}`,
-      `• Imóveis: ${dados.imoveis ? "Sim" : "Não"} | Veículos: ${dados.veiculos ? "Sim" : "Não"}`,
-      ``,
-      `💬 *CONTEXTO*`,
-      resumo,
-    ].join("\n");
+    return [`⚠️ *LEAD COM PROCESSO ATIVO*`, ``, `👤 *Nome:* ${leadName}`, `📱 *Telefone:* ${phone}${crmLink}`].join("\n");
   }
+  return [`📋 *LEAD — OUTRA DEMANDA*`, ``, `👤 *Nome:* ${leadName}`, `📱 *Telefone:* ${phone}${crmLink}`].join("\n");
+}
 
-  // handoff_outro
-  return [
-    `📋 *LEAD — OUTRA DEMANDA*`,
-    ``,
-    `👤 *Nome:* ${leadName}`,
-    `📱 *Telefone:* ${phone}`,
-    ``,
-    `━━━━━━━━━━━━━━━━━`,
-    `📌 *DEMANDA:* ${dados.descricao_outra_demanda || "Não especificada"}`,
-    ``,
-    `💬 *RESUMO DO CASO*`,
-    resumo,
-  ].join("\n");
+// ── Call Claude API (raw text, sem JSON wrapper) ──────────────────────────
+
+async function callClaudeRaw(
+  systemPrompt: string,
+  modelo: string,
+  conversationText: string
+): Promise<string> {
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
+
+  const res = await fetch(ANTHROPIC_API_URL, {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: modelo,
+      max_tokens: 2048,
+      system: systemPrompt,
+      messages: [{ role: "user", content: conversationText }],
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Claude API error: ${res.status}`);
+  const data = await res.json();
+  return data.content?.[0]?.text ?? "";
 }
 
 // ── Call Claude API ────────────────────────────────────────────────────────
@@ -295,6 +262,19 @@ Deno.serve(async (req: Request) => {
     if (state.status !== "ativo") {
       console.log(`Conversation ${phone} is ${state.status} — skipping`);
       return new Response(JSON.stringify({ skipped: true, reason: state.status }), { status: 200 });
+    }
+
+    // Se um humano assumiu o atendimento, não responde
+    if (lead_id) {
+      const { data: leadCheck } = await supabase
+        .from("leads")
+        .select("human_takeover")
+        .eq("id", lead_id)
+        .maybeSingle();
+      if (leadCheck?.human_takeover) {
+        console.log(`Lead ${lead_id} (${phone}) has human_takeover=true — skipping AI response`);
+        return new Response(JSON.stringify({ skipped: true, reason: "human_takeover" }), { status: 200 });
+      }
     }
 
     // Anti-duplicate: incrementa turno atomicamente e verifica se já foi processado
@@ -454,32 +434,67 @@ Deno.serve(async (req: Request) => {
         leadName = lead?.full_name || phone;
       }
 
-      // Gera resumo via Claude em formato JSON (mesmo padrão da função callClaude)
-      const resumoPrompt = `Você é um assistente que gera resumos concisos de conversas de qualificação de leads.
-Gere um resumo de 2-3 frases descrevendo a situação emocional e urgência do lead.
-Responda APENAS com JSON no formato: {"mensagem": "seu resumo aqui", "acao": "continuar", "classificacao": null, "dados_coletados": {}}`;
+      // Gera briefing rico via Claude com base no histórico completo da conversa
+      const briefingPrompt = `Você é um assistente especializado em preparar briefings de casos de divórcio para o time de SDR de um escritório de advocacia.
 
-      const resumoResponse = await callClaude(
-        resumoPrompt,
+Com base na conversa abaixo, gere um briefing detalhado para o grupo de WhatsApp do time. Use APENAS informações que o lead realmente mencionou na conversa — não invente ou assuma nada.
+
+FORMATO OBRIGATÓRIO (use exatamente esses emojis e seções, omita seções sem informação):
+
+📌 SITUAÇÃO ATUAL
+• [bullets com contexto da separação, tempo, iniciativa, se há acordo, cidade, situação emocional]
+
+[se há filhos:]
+👨‍👩‍👧‍👦 FILHOS
+• [quantidade, nomes se mencionados, idades]
+• [vínculo com o pai/mãe, rotina]
+
+[se guarda foi discutida:]
+🧒 GUARDA E CONVIVÊNCIA
+• [situação atual, proposta de cada parte, ponto de conflito]
+
+[se pensão foi discutida:]
+💸 PENSÃO ALIMENTÍCIA
+• [situação, valores se mencionados, nível de conflito]
+
+💰 RENDA
+• Ele/Ela: [profissão] — [renda aproximada]
+• Ex-cônjuge: [profissão] — [renda aproximada]
+
+[se há bens:]
+🏠 IMÓVEIS / 🚗 VEÍCULOS / 💼 OUTROS BENS
+• [detalhes de cada bem mencionado: valor, dívida, situação]
+
+[se há conflitos claros:]
+⚠️ PRINCIPAIS PONTOS DE CONFLITO
+• [lista]
+
+🎯 OBJETIVOS DO CLIENTE
+• [o que o lead quer resolver]
+
+📌 OBSERVAÇÕES RELEVANTES
+• [perfil emocional, urgência, disposição para fechar]
+
+Responda APENAS com o briefing formatado, sem introdução nem explicação.`;
+
+      // Formata conversa como texto para o Claude gerar o briefing sem confundir roles
+      const conversationText = messages
+        .map((m) => `${m.role === "user" ? "LEAD" : "RAFAELA"}: ${m.content}`)
+        .join("\n") + `\n\nRAFAELA: ${agentResponse.mensagem}`;
+
+      const briefingTexto = await callClaudeRaw(
+        briefingPrompt,
         config.modelo,
-        messages
-      ).catch(() => ({ mensagem: "Sem resumo disponível.", acao: "continuar" as const, classificacao: null, dados_coletados: {} }));
-
-      const resumoTexto = resumoResponse.mensagem || "Sem resumo disponível.";
+        `Conversa completa:\n\n${conversationText}`
+      ).catch(() => "Sem briefing disponível.");
 
       await supabase
         .from("ai_conversation_state")
-        .update({ resumo: resumoTexto })
+        .update({ resumo: briefingTexto })
         .eq("phone", phone);
 
-      const sdrMessage = buildSdrSummary(
-        leadName,
-        phone,
-        agentResponse.classificacao,
-        newDados,
-        agentResponse.acao,
-        resumoTexto
-      );
+      const header = buildSdrHeader(leadName, phone, agentResponse.classificacao, agentResponse.acao, lead_id);
+      const sdrMessage = `${header}\n\n━━━━━━━━━━━━━━━━━\n${briefingTexto}`;
 
       await sendUazapiGroupMessage(supabase, sdrMessage);
 

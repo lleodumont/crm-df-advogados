@@ -41,7 +41,7 @@ export async function importLeadViaWebhook(leadData: LeadImportData) {
     'groud-id': leadData.group_id,
   };
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/meta-webhook`, {
+  const response = await fetch(`${supabaseUrl}/functions/v1/receive-lead`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

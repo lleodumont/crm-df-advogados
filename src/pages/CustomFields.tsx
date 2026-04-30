@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Trash2, GripVertical, Check, X } from 'lucide-react';
+import { notify } from '../lib/toast';
 
 interface CustomSection {
   id: string;
@@ -80,13 +81,13 @@ export default function CustomFields() {
     // Deleta os campos da sessão
     const { error: fieldsError } = await supabase.from('custom_fields').delete().eq('section_id', id);
     if (fieldsError) {
-      alert('Erro ao limpar campos da sessão: ' + fieldsError.message);
+      notify.error('Erro ao limpar campos da sessão: ' + fieldsError.message);
       return;
     }
 
     const { error } = await supabase.from('custom_sections').delete().eq('id', id);
     if (error) {
-      alert('Erro ao apagar sessão: ' + error.message);
+      notify.error('Erro ao apagar sessão: ' + error.message);
       return;
     }
     setSections(sections.filter(s => s.id !== id));
@@ -131,7 +132,7 @@ export default function CustomFields() {
 
     const { error } = await supabase.from('custom_fields').delete().eq('id', id);
     if (error) {
-       alert('Erro ao apagar campo: ' + error.message);
+       notify.error('Erro ao apagar campo: ' + error.message);
        return;
     }
     setFields(fields.filter(f => f.id !== id));

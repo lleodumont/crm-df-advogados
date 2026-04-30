@@ -15,8 +15,8 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const uazapiUrl = Deno.env.get("UAZAPI_BASE_URL") ?? "https://grupodumont.uazapi.com";
-    const uazapiToken = Deno.env.get("UAZAPI_TOKEN")!;
+    const defaultPhoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID")!;
+    const defaultAccessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN")!;
 
     // Buscar leads qualificados sem contato nos últimos 3 dias
     const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
@@ -32,10 +32,10 @@ Deno.serve(async (req: Request) => {
 
     if (error) throw error;
 
-    // Buscar instância conectada
+    // Buscar instância conectada (prefere instância com credenciais Meta próprias)
     const { data: instance } = await supabase
       .from('whatsapp_instances')
-      .select('id, instance_id')
+      .select('id, instance_id, phone_number_id, access_token')
       .eq('status', 'connected')
       .limit(1)
       .single();
@@ -57,12 +57,28 @@ Deno.serve(async (req: Request) => {
           ? `Olá ${lead.full_name.split(' ')[0]}! 👋 Passando para ver se posso te ajudar com alguma dúvida sobre seu processo. Estou à disposição!`
           : `Olá ${lead.full_name.split(' ')[0]}! Como posso te ajudar hoje? 😊`;
 
-        // Enviar via UAZAPI
-        const sendRes = await fetch(`${uazapiUrl}/message/sendText/${instance.instance_id}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${uazapiToken}` },
-          body: JSON.stringify({ number: lead.phone, text: message }),
-        });
+        // Enviar via Meta Cloud API
+        const phoneNumberId = instance.phone_number_id || defaultPhoneNumberId;
+        const accessToken = instance.access_token || defaultAccessToken;
+        const cleanPhone = lead.phone.replace(/\D/g, '');
+        const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+        const sendRes = await fetch(
+          `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({
+              messaging_product: 'whatsapp',
+              to: formattedPhone,
+              type: 'text',
+              text: { body: message },
+            }),
+          }
+        );
 
         if (!sendRes.ok) {
           errors.push(`Lead ${lead.id}: ${sendRes.statusText}`);

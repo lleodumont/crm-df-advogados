@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import Layout from './components/Layout';
+import WhatsAppIncomingNotification from './components/WhatsAppIncomingNotification';
 
 const Login = lazy(() => import('./pages/Login'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -20,6 +21,9 @@ const Tags = lazy(() => import('./pages/Tags'));
 const Stages = lazy(() => import('./pages/Stages'));
 const CustomFields = lazy(() => import('./pages/CustomFields'));
 const AttendanceReport = lazy(() => import('./pages/AttendanceReport'));
+const Juridico = lazy(() => import('./pages/Juridico'));
+const WhatsAppTemplates = lazy(() => import('./pages/WhatsAppTemplates'));
+const AutomationFlows = lazy(() => import('./pages/AutomationFlows'));
 
 function PageLoader() {
   return (
@@ -61,12 +65,15 @@ function Router() {
   if (path === '/custom-fields') return <CustomFields />;
   if (path === '/users') return <Users />;
   if (path === '/attendance-report') return <AttendanceReport />;
+  if (path === '/juridico') return <Juridico />;
+  if (path === '/whatsapp-templates') return <WhatsAppTemplates />;
+  if (path === '/automations') return <AutomationFlows />;
 
   return <Dashboard />;
 }
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
 
   if (loading) {
     return (
@@ -84,11 +91,17 @@ function AppContent() {
     );
   }
 
+  if (profile?.role === 'juridico' && window.location.pathname === '/') {
+    window.location.href = '/juridico';
+    return null;
+  }
+
   return (
     <Layout>
       <Suspense fallback={<PageLoader />}>
         <Router />
       </Suspense>
+      <WhatsAppIncomingNotification />
     </Layout>
   );
 }

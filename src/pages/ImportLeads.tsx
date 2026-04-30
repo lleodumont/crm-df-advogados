@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Upload, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { notify } from '../lib/toast';
 
 interface MappingConfig {
   csvColumn: string;
@@ -11,6 +12,15 @@ interface MappingConfig {
 export default function ImportLeads() {
   const { profile } = useAuth();
   const [file, setFile] = useState<File | null>(null);
+  const [rhuamUserId, setRhuamUserId] = useState<string | null>(null);
+
+  // Busca o ID do Rhuam ao montar
+  supabase
+    .from('user_profiles')
+    .select('id')
+    .eq('email', 'rhuamcarlostr@gmail.com')
+    .single()
+    .then(({ data }) => { if (data) setRhuamUserId(data.id); });
   const [csvData, setCsvData] = useState<any[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
   const [mappings, setMappings] = useState<MappingConfig[]>([]);
@@ -95,7 +105,7 @@ export default function ImportLeads() {
         try {
           const leadData: any = {
             source: 'meta_form',
-            owner_user_id: profile?.id,
+            owner_user_id: rhuamUserId || profile?.id,
           };
 
           const answers: any[] = [];
@@ -159,7 +169,7 @@ export default function ImportLeads() {
       setImportResult({ success: successCount, errors: errorCount });
     } catch (error) {
       console.error('Import error:', error);
-      alert('Erro durante a importação');
+      notify.error('Erro durante a importação');
     } finally {
       setImporting(false);
     }

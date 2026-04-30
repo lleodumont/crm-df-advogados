@@ -6,37 +6,191 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
+const META_API_VERSION = "v18.0";
+const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
+
+interface TemplateComponent {
+  type: string;
+  parameters?: { type: string; text?: string }[];
+}
+
 interface SendMessageRequest {
   instanceId: string;
   phoneNumber: string;
   message: string;
   leadId?: string;
-  // Media fields
   mediaType?: "image" | "audio" | "video" | "document";
-  mediaBase64?: string;
   mediaUrl?: string;
   mediaFilename?: string;
   mediaMimeType?: string;
   mediaCaption?: string;
+  // Template fields
+  templateName?: string;
+  templateLanguage?: string;
+  templateComponents?: TemplateComponent[];
+}
+
+// Upload de mídia para Meta e retorna mediaId
+async function uploadMediaToMeta(
+  phoneNumberId: string,
+  accessToken: string,
+  mediaUrl: string,
+  mimeType: string,
+  filename: string
+): Promise<string> {
+  const fileRes = await fetch(mediaUrl);
+  if (!fileRes.ok) throw new Error(`Falha ao baixar mídia: ${fileRes.statusText}`);
+  const fileBlob = await fileRes.blob();
+
+  const form = new FormData();
+  form.append("file", fileBlob, filename);
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mimeType);
+
+  const uploadRes = await fetch(`${META_API_BASE}/${phoneNumberId}/media`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: form,
+  });
+
+  if (!uploadRes.ok) {
+    const err = await uploadRes.text();
+    throw new Error(`Falha ao fazer upload de mídia para Meta: ${err}`);
+  }
+
+  const { id } = await uploadRes.json();
+  if (!id) throw new Error("Meta não retornou mediaId após upload");
+  return id;
+}
+
+// Monta o payload de mensagem para Meta Graph API
+function buildMetaPayload(
+  phone: string,
+  mediaType: string | undefined,
+  mediaId: string | undefined,
+  message: string,
+  mediaFilename?: string,
+  mediaCaption?: string
+): Record<string, unknown> {
+  if (!mediaType || !mediaId) {
+    return {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "text",
+      text: { body: message },
+    };
+  }
+
+  if (mediaType === "audio") {
+    return {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "audio",
+      audio: { id: mediaId },
+    };
+  }
+
+  if (mediaType === "image") {
+    return {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "image",
+      image: { id: mediaId, ...(mediaCaption ? { caption: mediaCaption } : {}) },
+    };
+  }
+
+  if (mediaType === "video") {
+    return {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "video",
+      video: { id: mediaId, ...(mediaCaption ? { caption: mediaCaption } : {}) },
+    };
+  }
+
+  if (mediaType === "document") {
+    return {
+      messaging_product: "whatsapp",
+      to: phone,
+      type: "document",
+      document: {
+        id: mediaId,
+        ...(mediaFilename ? { filename: mediaFilename } : {}),
+        ...(mediaCaption ? { caption: mediaCaption } : {}),
+      },
+    };
+  }
+
+  throw new Error(`Tipo de mídia não suportado: ${mediaType}`);
+}
+
+// Envia mensagem via UazAPI (texto ou mídia)
+async function sendViaUazapi(
+  apiUrl: string,
+  token: string,
+  phone: string,
+  mediaType: string | undefined,
+  mediaUrl: string | undefined,
+  message: string,
+  mediaFilename?: string,
+  mediaMimeType?: string,
+  mediaCaption?: string,
+): Promise<string | undefined> {
+  const headers = {
+    "Content-Type": "application/json",
+    "token": token,
+  };
+
+  if (!mediaType || !mediaUrl) {
+    const res = await fetch(`${apiUrl}/send/text`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ number: phone, text: message }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`UazAPI text error: ${err}`);
+    }
+    const data = await res.json();
+    return data?.id ?? data?.messageId ?? undefined;
+  }
+
+  const body: Record<string, unknown> = {
+    number: phone,
+    type: mediaType,
+    file: mediaUrl,
+    ...(mediaCaption ? { text: mediaCaption } : {}),
+    ...(mediaFilename ? { docName: mediaFilename } : {}),
+    ...(mediaMimeType ? { mimetype: mediaMimeType } : {}),
+  };
+
+  const res = await fetch(`${apiUrl}/send/media`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`UazAPI media error: ${err}`);
+  }
+  const data = await res.json();
+  return data?.id ?? data?.messageId ?? undefined;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
-    console.log("Starting whatsapp-send function");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    const authHeader = req.headers.get("Authorization");
-    console.log("Auth header present:", !!authHeader);
+    const defaultPhoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
+    const defaultAccessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
 
+    const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(
         JSON.stringify({ error: "Missing authorization header" }),
@@ -50,15 +204,17 @@ Deno.serve(async (req: Request) => {
       message,
       leadId,
       mediaType,
-      mediaBase64,
       mediaUrl,
       mediaFilename,
       mediaMimeType,
       mediaCaption,
+      templateName,
+      templateLanguage,
+      templateComponents,
     }: SendMessageRequest = await req.json();
 
     const isMediaMessage = !!mediaType;
-    console.log("Received request:", { instanceId, phoneNumber, leadId, isMediaMessage, mediaType });
+    const isTemplateMessage = !!templateName;
 
     if (!instanceId || !phoneNumber) {
       return new Response(
@@ -67,41 +223,32 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!isMediaMessage && !message) {
+    if (!isMediaMessage && !isTemplateMessage && !message) {
       return new Response(
-        JSON.stringify({ error: "Missing required field: message (for text messages)" }),
+        JSON.stringify({ error: "Missing required field: message" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (isMediaMessage && !mediaBase64 && !mediaUrl) {
+    if (isMediaMessage && !mediaUrl) {
       return new Response(
-        JSON.stringify({ error: "Missing required field: mediaBase64 or mediaUrl (for media messages)" }),
+        JSON.stringify({ error: "Missing required field: mediaUrl" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const cleanPhone = phoneNumber.replace(/\D/g, "");
     const formattedPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
-    console.log("Formatted phone:", formattedPhone);
 
     const { createClient } = await import("npm:@supabase/supabase-js@2.57.4");
 
-    // Create client with user's JWT to validate session
     const token = authHeader.replace("Bearer ", "");
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
+      global: { headers: { Authorization: authHeader } },
     });
 
-    // Validate the user session
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-
     if (authError || !user) {
-      console.error("Auth validation failed:", authError);
       return new Response(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -109,100 +256,178 @@ Deno.serve(async (req: Request) => {
     }
 
     const userId = user.id;
-    console.log("Authenticated user ID:", userId);
-
-    // Use service role client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { data: instance, error: instanceError } = await supabase
       .from("whatsapp_instances")
-      .select("id, token, api_url")
+      .select("id, provider, phone_number_id, access_token, api_url, uazapi_token")
       .eq("instance_id", instanceId)
       .single();
 
     if (instanceError || !instance) {
-      console.error("Instance error:", instanceError);
       throw new Error("WhatsApp instance not found");
     }
 
-    if (!instance.token) {
-      throw new Error("Instance token not configured. Please update the instance with API credentials.");
+    const provider = instance.provider ?? "meta";
+
+    // ─── UazAPI ───────────────────────────────────────────────────────────────
+    if (provider === "uazapi") {
+      if (isTemplateMessage) {
+        return new Response(
+          JSON.stringify({ error: "Templates não são suportados pelo provedor UazAPI" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!instance.api_url || !instance.uazapi_token) {
+        throw new Error("Credenciais UazAPI não configuradas (api_url e uazapi_token obrigatórios)");
+      }
+
+      const msgType = isMediaMessage ? mediaType! : "text";
+      const msgContent = isMediaMessage
+        ? (mediaCaption || mediaFilename || mediaType || "media")
+        : message;
+
+      let externalId: string | undefined;
+      let failed = false;
+      let errMessage = "";
+
+      try {
+        externalId = await sendViaUazapi(
+          instance.api_url,
+          instance.uazapi_token,
+          formattedPhone,
+          isMediaMessage ? mediaType : undefined,
+          mediaUrl,
+          message,
+          mediaFilename,
+          mediaMimeType,
+          mediaCaption,
+        );
+        console.log("UazAPI send ok, id:", externalId);
+      } catch (e) {
+        failed = true;
+        errMessage = (e as Error).message;
+        console.error("UazAPI send error:", errMessage);
+      }
+
+      const { data: savedMessage, error: saveError } = await supabase
+        .from("whatsapp_messages")
+        .insert({
+          instance_id: instance.id,
+          lead_id: leadId || null,
+          phone_number: formattedPhone,
+          message_type: msgType,
+          content: msgContent,
+          media_url: isMediaMessage ? (mediaUrl || null) : null,
+          direction: "outbound",
+          status: failed ? "failed" : "sent",
+          external_id: externalId || null,
+          sent_by: userId,
+          ...(failed ? { error: errMessage } : {}),
+        })
+        .select()
+        .single();
+
+      if (saveError) throw saveError;
+
+      return new Response(
+        JSON.stringify({ success: !failed, message: savedMessage, ...(failed ? { error: errMessage } : {}) }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    if (!instance.api_url) {
-      throw new Error("Instance API URL not configured. Please update the instance.");
+    // ─── Meta Cloud API ───────────────────────────────────────────────────────
+    const phoneNumberId = instance.phone_number_id || defaultPhoneNumberId;
+    const accessToken = instance.access_token || defaultAccessToken;
+
+    if (!phoneNumberId || !accessToken) {
+      throw new Error(
+        "Credenciais da Meta não configuradas. Configure Phone Number ID e Access Token na instância."
+      );
     }
 
-    console.log("Instance found:", instance.id);
+    let mediaId: string | undefined;
+    if (isMediaMessage && mediaUrl) {
+      const filename = mediaFilename || `media.${(mediaMimeType || "").split("/")[1] || "bin"}`;
+      const mimeType = mediaMimeType || "application/octet-stream";
+      mediaId = await uploadMediaToMeta(phoneNumberId, accessToken, mediaUrl, mimeType, filename);
+      console.log("Media uploaded to Meta, mediaId:", mediaId);
+    }
 
-    // Build UAZapi endpoint and payload
-    // UazAPI usa /send/media para todos os tipos de mídia com campo "type"
-    // Docs: https://docs.uazapi.com/endpoint/post/send~media
-    let apiUrl: string;
-    let payload: Record<string, unknown>;
-
-    if (isMediaMessage) {
-      apiUrl = `${instance.api_url}/send/media`;
-
-      // "file" aceita URL ou base64
-      const fileValue = mediaBase64
-        ? `data:${mediaMimeType || "application/octet-stream"};base64,${mediaBase64}`
-        : mediaUrl || "";
-
-      // Mapear tipo interno para tipo UazAPI
-      // ptt = push-to-talk (áudio de voz no WhatsApp); vídeo e imagem mantêm o tipo original
-      const uazType = mediaType === "audio" ? "ptt" : mediaType;
-
-      payload = {
-        number: formattedPhone,
-        type: uazType,
-        file: fileValue,
+    let metaPayload: Record<string, unknown>;
+    if (isTemplateMessage) {
+      metaPayload = {
+        messaging_product: "whatsapp",
+        to: formattedPhone,
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: templateLanguage || "pt_BR" },
+          ...(templateComponents && templateComponents.length > 0 ? { components: templateComponents } : {}),
+        },
       };
-
-      if (mediaCaption) payload.text = mediaCaption;
-      if (mediaType === "document" && mediaFilename) payload.docName = mediaFilename;
-      if (mediaMimeType) payload.mimetype = mediaMimeType;
-
     } else {
-      apiUrl = `${instance.api_url}/send/text`;
-      payload = { number: formattedPhone, text: message };
+      metaPayload = buildMetaPayload(
+        formattedPhone,
+        isMediaMessage ? mediaType : undefined,
+        mediaId,
+        message,
+        mediaFilename,
+        mediaCaption
+      );
     }
 
-    console.log("Sending to UAZapi:", { url: apiUrl, number: formattedPhone, mediaType: mediaType || "text" });
+    const msgType = isTemplateMessage ? "template" : (isMediaMessage ? mediaType! : "text");
+    const msgContent = isTemplateMessage
+      ? (message || templateName || "template")
+      : (isMediaMessage ? (mediaCaption || mediaFilename || mediaType || "media") : message);
 
-    const response = await fetch(apiUrl, {
+    console.log("Sending to Meta Graph API:", { phone: formattedPhone, type: msgType });
+
+    const metaRes = await fetch(`${META_API_BASE}/${phoneNumberId}/messages`, {
       method: "POST",
       headers: {
-        "Accept": "application/json",
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        "token": instance.token,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(metaPayload),
     });
 
-    console.log("UAZapi response status:", response.status);
+    if (!metaRes.ok) {
+      const errText = await metaRes.text();
+      console.error("Meta API error:", errText);
+      let errJson: { error?: { message?: string } } = {};
+      try { errJson = JSON.parse(errText); } catch { /* ignore */ }
+      const errMessage = errJson.error?.message || `Meta API error: ${metaRes.statusText}`;
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("UAZapi error response:", errorText);
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        throw new Error(`UAZapi error: ${response.statusText} - ${errorText}`);
-      }
-      throw new Error(`UAZapi error: ${errorData.message || response.statusText}`);
+      const { data: failedMessage } = await supabase
+        .from("whatsapp_messages")
+        .insert({
+          instance_id: instance.id,
+          lead_id: leadId || null,
+          phone_number: formattedPhone,
+          message_type: msgType,
+          content: msgContent,
+          media_url: isMediaMessage ? (mediaUrl || null) : null,
+          direction: "outbound",
+          status: "failed",
+          external_id: null,
+          sent_by: userId,
+          error: errMessage,
+        })
+        .select()
+        .single();
+
+      return new Response(
+        JSON.stringify({ success: false, error: errMessage, message: failedMessage }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    let responseData;
-    try {
-      const responseText = await response.text();
-      console.log("UAZapi raw response:", responseText);
-      responseData = responseText ? JSON.parse(responseText) : {};
-    } catch (e) {
-      console.log("UAZapi returned non-JSON response, using empty object");
-      responseData = {};
-    }
+    const metaData = await metaRes.json();
+    const externalId = metaData.messages?.[0]?.id;
+    console.log("Meta API response, message id:", externalId);
 
     const { data: savedMessage, error: saveError } = await supabase
       .from("whatsapp_messages")
@@ -210,12 +435,12 @@ Deno.serve(async (req: Request) => {
         instance_id: instance.id,
         lead_id: leadId || null,
         phone_number: formattedPhone,
-        message_type: isMediaMessage ? mediaType : "text",
-        content: isMediaMessage ? (mediaCaption || mediaFilename || mediaType || "media") : message,
+        message_type: msgType,
+        content: msgContent,
         media_url: isMediaMessage ? (mediaUrl || null) : null,
         direction: "outbound",
         status: "sent",
-        external_id: responseData.messageId || responseData.id,
+        external_id: externalId || null,
         sent_by: userId,
       })
       .select()
@@ -225,18 +450,14 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ success: true, message: savedMessage }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
   } catch (error) {
     console.error("Error sending WhatsApp message:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

@@ -11,6 +11,9 @@ interface WhatsAppInstance {
   phone_number_id: string | null;
   access_token: string | null;
   waba_id: string | null;
+  api_url: string | null;
+  uazapi_token: string | null;
+  provider: 'meta' | 'uazapi';
   status: 'disconnected' | 'connecting' | 'connected' | 'qrcode';
   created_at: string;
 }
@@ -29,8 +32,9 @@ export default function WhatsAppSettings() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [verifying, setVerifying] = useState<string | null>(null);
+  const [providerType, setProviderType] = useState<'meta' | 'uazapi'>('meta');
 
-  // Form state
+  // Form Meta
   const [form, setForm] = useState({
     name: '',
     instance_id: '',
@@ -39,6 +43,16 @@ export default function WhatsAppSettings() {
     waba_id: '',
   });
 
+  // Form UazAPI (whatsapp_instances)
+  const [uazForm, setUazForm] = useState({
+    name: '',
+    instance_id: '',
+    api_url: '',
+    uazapi_token: '',
+    phone_number: '',
+  });
+
+  // Seção SDR legacy (uazapi_instances separada)
   const [uazapiInstances, setUazapiInstances] = useState<UazapiInstance[]>([]);
   const [showUazapiModal, setShowUazapiModal] = useState(false);
   const [testingUazapi, setTestingUazapi] = useState(false);
@@ -78,7 +92,7 @@ export default function WhatsAppSettings() {
     }
   };
 
-  const saveInstance = async () => {
+  const saveMetaInstance = async () => {
     if (!form.name.trim() || !form.phone_number_id.trim() || !form.access_token.trim()) {
       notify.error('Preencha Nome, Phone Number ID e Access Token');
       return;
@@ -96,15 +110,15 @@ export default function WhatsAppSettings() {
           phone_number_id: form.phone_number_id,
           access_token: form.access_token,
           waba_id: form.waba_id || null,
+          provider: 'meta',
           status: 'connected',
           created_by: user.id,
         });
 
       if (error) throw error;
 
-      notify.success('Instância salva! Clique em "Verificar" para confirmar a conexão.');
-      setShowModal(false);
-      setForm({ name: '', instance_id: '', phone_number_id: '', access_token: '', waba_id: '' });
+      notify.success('Instância Meta salva! Clique em "Verificar" para confirmar a conexão.');
+      closeModal();
       loadInstances();
     } catch (error) {
       console.error('Error saving instance:', error);
@@ -112,7 +126,53 @@ export default function WhatsAppSettings() {
     }
   };
 
+  const saveUazapiToMainTable = async () => {
+    if (!uazForm.name.trim() || !uazForm.instance_id.trim() || !uazForm.api_url.trim() || !uazForm.uazapi_token.trim()) {
+      notify.error('Preencha Nome, Instance ID, URL da instância e Token');
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('whatsapp_instances')
+        .insert({
+          name: uazForm.name,
+          instance_id: uazForm.instance_id,
+          api_url: uazForm.api_url,
+          uazapi_token: uazForm.uazapi_token,
+          phone_number: uazForm.phone_number || null,
+          provider: 'uazapi',
+          status: 'connected',
+          created_by: user.id,
+        });
+
+      if (error) throw error;
+
+      notify.success('Instância UazAPI salva!');
+      closeModal();
+      loadInstances();
+    } catch (error) {
+      console.error('Error saving UazAPI instance:', error);
+      notify.error('Erro ao salvar: ' + (error as Error).message);
+    }
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setProviderType('meta');
+    setForm({ name: '', instance_id: '', phone_number_id: '', access_token: '', waba_id: '' });
+    setUazForm({ name: '', instance_id: '', api_url: '', uazapi_token: '', phone_number: '' });
+  };
+
   const verifyInstance = async (instance: WhatsAppInstance) => {
+    if (instance.provider === 'uazapi') {
+      notify.info('Instâncias UazAPI não possuem verificação automática. Teste enviando uma mensagem.');
+      return;
+    }
+
     setVerifying(instance.id);
     try {
       const params = new URLSearchParams({
@@ -232,8 +292,8 @@ export default function WhatsAppSettings() {
     <div className="max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">WhatsApp — API Oficial Meta</h1>
-          <p className="text-gray-600 mt-1">Gerencie as contas WhatsApp Business conectadas via Meta Cloud API</p>
+          <h1 className="text-2xl font-bold text-gray-900">WhatsApp</h1>
+          <p className="text-gray-600 mt-1">Gerencie os números conectados ao CRM</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -244,55 +304,56 @@ export default function WhatsAppSettings() {
         </button>
       </div>
 
-      {/* Info box */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-sm text-blue-800">
-        <strong>Como obter as credenciais:</strong> acesse o{' '}
-        <span className="font-mono">Meta Business Manager → WhatsApp → Configurações da API</span>.
-        O <strong>Phone Number ID</strong> e o <strong>Access Token</strong> estão na seção "Chaves de API".
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {instances.map((instance) => (
-          <div key={instance.id} className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <Smartphone className="w-6 h-6 text-green-600" />
+        {instances.map((instance) => {
+          const isUazapi = instance.provider === 'uazapi';
+          return (
+            <div key={instance.id} className="bg-white rounded-lg shadow-md p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${isUazapi ? 'bg-green-100' : 'bg-blue-100'}`}>
+                    <Smartphone className={`w-6 h-6 ${isUazapi ? 'text-green-600' : 'text-blue-600'}`} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-gray-900">{instance.name}</h3>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isUazapi ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                        {isUazapi ? 'UazAPI' : 'Meta'}
+                      </span>
+                    </div>
+                    {instance.phone_number && (
+                      <p className="text-sm text-gray-600">{instance.phone_number}</p>
+                    )}
+                    <p className="text-xs text-gray-400 font-mono mt-0.5">
+                      ID: {isUazapi ? instance.instance_id : (instance.phone_number_id || instance.instance_id)}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">{instance.name}</h3>
-                  {instance.phone_number && (
-                    <p className="text-sm text-gray-600">{instance.phone_number}</p>
-                  )}
-                  <p className="text-xs text-gray-400 font-mono mt-0.5">
-                    ID: {instance.phone_number_id || instance.instance_id}
-                  </p>
+                <div className="flex items-center gap-1.5">
+                  {getStatusIcon(instance.status)}
+                  <span className="text-sm text-gray-600">{getStatusText(instance.status)}</span>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                {getStatusIcon(instance.status)}
-                <span className="text-sm text-gray-600">{getStatusText(instance.status)}</span>
-              </div>
-            </div>
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => verifyInstance(instance)}
-                disabled={verifying === instance.id}
-                className="flex-1 flex items-center justify-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 transition disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${verifying === instance.id ? 'animate-spin' : ''}`} />
-                Verificar
-              </button>
-              <button
-                onClick={() => deleteInstance(instance.id)}
-                className="flex items-center justify-center gap-2 bg-gray-50 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 transition"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => verifyInstance(instance)}
+                  disabled={verifying === instance.id}
+                  className="flex-1 flex items-center justify-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-100 transition disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${verifying === instance.id ? 'animate-spin' : ''}`} />
+                  Verificar
+                </button>
+                <button
+                  onClick={() => deleteInstance(instance.id)}
+                  className="flex items-center justify-center gap-2 bg-gray-50 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-100 transition"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {instances.length === 0 && (
@@ -303,11 +364,11 @@ export default function WhatsAppSettings() {
         </div>
       )}
 
-      {/* ── Seção UAZAPI ────────────────────────────────────────── */}
+      {/* ── Seção SDR legacy (uazapi_instances) ─────────────────── */}
       <div className="mt-8">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">API Não Oficial (UAZAPI)</h2>
+            <h2 className="text-lg font-semibold text-gray-900">UAZAPI — Grupo SDR</h2>
             <p className="text-sm text-gray-500">Usado para notificações no grupo do SDR</p>
           </div>
           <button
@@ -359,11 +420,11 @@ export default function WhatsAppSettings() {
         )}
       </div>
 
-      {/* ── Modal UAZAPI ────────────────────────────────────────── */}
+      {/* ── Modal SDR UAZAPI ─────────────────────────────────────── */}
       {showUazapiModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Configurar UAZAPI</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Configurar UAZAPI SDR</h3>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nome</label>
@@ -425,73 +486,154 @@ export default function WhatsAppSettings() {
         </div>
       )}
 
+      {/* ── Modal Adicionar Conta (Meta ou UazAPI) ───────────────── */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold text-gray-900 mb-1">Adicionar Conta WhatsApp</h2>
-            <p className="text-sm text-gray-500 mb-5">Credenciais da Meta Cloud API (oficial)</p>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Adicionar Conta WhatsApp</h2>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Ex: Atendimento DF Advogados"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number ID <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={form.phone_number_id}
-                  onChange={(e) => setForm({ ...form, phone_number_id: e.target.value })}
-                  placeholder="Ex: 935170166348614"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm"
-                />
-                <p className="text-xs text-gray-500 mt-1">Encontrado no Meta Business Manager → WhatsApp → API</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Access Token <span className="text-red-500">*</span></label>
-                <input
-                  type="password"
-                  value={form.access_token}
-                  onChange={(e) => setForm({ ...form, access_token: e.target.value })}
-                  placeholder="EAAxxxxxxxx..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm"
-                />
-                <p className="text-xs text-gray-500 mt-1">Token de acesso permanente (System User Token)</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">WABA ID <span className="text-gray-400 text-xs">(opcional — para templates)</span></label>
-                <input
-                  type="text"
-                  value={form.waba_id}
-                  onChange={(e) => setForm({ ...form, waba_id: e.target.value })}
-                  placeholder="Ex: 1604246810601685"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm"
-                />
-              </div>
+            {/* Toggle provedor */}
+            <div className="flex rounded-lg border border-gray-200 p-1 mb-5">
+              <button
+                onClick={() => setProviderType('meta')}
+                className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition ${
+                  providerType === 'meta'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Meta Cloud API
+              </button>
+              <button
+                onClick={() => setProviderType('uazapi')}
+                className={`flex-1 py-1.5 text-sm font-semibold rounded-md transition ${
+                  providerType === 'uazapi'
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                UazAPI (Não oficial)
+              </button>
             </div>
+
+            {providerType === 'meta' ? (
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+                  <strong>Credenciais:</strong> Meta Business Manager → WhatsApp → Configurações da API
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="Ex: Atendimento DF Advogados"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number ID <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={form.phone_number_id}
+                    onChange={(e) => setForm({ ...form, phone_number_id: e.target.value })}
+                    placeholder="Ex: 935170166348614"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Access Token <span className="text-red-500">*</span></label>
+                  <input
+                    type="password"
+                    value={form.access_token}
+                    onChange={(e) => setForm({ ...form, access_token: e.target.value })}
+                    placeholder="EAAxxxxxxxx..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Token permanente (System User Token)</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">WABA ID <span className="text-gray-400 text-xs">(opcional — para templates)</span></label>
+                  <input
+                    type="text"
+                    value={form.waba_id}
+                    onChange={(e) => setForm({ ...form, waba_id: e.target.value })}
+                    placeholder="Ex: 1604246810601685"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-800">
+                  <strong>Instance ID</strong> deve coincidir com o <strong>instanceName</strong> configurado no servidor UazAPI para que o webhook funcione.
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nome <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={uazForm.name}
+                    onChange={(e) => setUazForm({ ...uazForm, name: e.target.value })}
+                    placeholder="Ex: Comercial 2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Instance ID <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={uazForm.instance_id}
+                    onChange={(e) => setUazForm({ ...uazForm, instance_id: e.target.value })}
+                    placeholder="Ex: minha-instancia"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Deve ser o mesmo instanceName do servidor UazAPI</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">URL da instância <span className="text-red-500">*</span></label>
+                  <input
+                    type="text"
+                    value={uazForm.api_url}
+                    onChange={(e) => setUazForm({ ...uazForm, api_url: e.target.value })}
+                    placeholder="https://api.uazapi.com"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Token <span className="text-red-500">*</span></label>
+                  <input
+                    type="password"
+                    value={uazForm.uazapi_token}
+                    onChange={(e) => setUazForm({ ...uazForm, uazapi_token: e.target.value })}
+                    placeholder="seu-token-uazapi"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Número <span className="text-gray-400 text-xs">(opcional — apenas para exibição)</span></label>
+                  <input
+                    type="text"
+                    value={uazForm.phone_number}
+                    onChange={(e) => setUazForm({ ...uazForm, phone_number: e.target.value })}
+                    placeholder="Ex: 5561999999999"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono text-sm"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button
-                onClick={() => {
-                  setShowModal(false);
-                  setForm({ name: '', instance_id: '', phone_number_id: '', access_token: '', waba_id: '' });
-                }}
+                onClick={closeModal}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
               >
                 Cancelar
               </button>
               <button
-                onClick={saveInstance}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                onClick={providerType === 'meta' ? saveMetaInstance : saveUazapiToMainTable}
+                className={`flex-1 px-4 py-2 text-white rounded-lg transition ${
+                  providerType === 'meta' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                }`}
               >
                 Salvar
               </button>

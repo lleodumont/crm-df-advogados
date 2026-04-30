@@ -1,10 +1,12 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+DDimport "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
+
+const META_API_VERSION = "v18.0";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -18,8 +20,13 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
-  const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
+  // Aceita phone_number_id e access_token via query params (por instância)
+  // ou fallback para variáveis de ambiente globais
+  const url = new URL(req.url);
+  const phoneNumberId =
+    url.searchParams.get("phone_number_id") || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
+  const accessToken =
+    url.searchParams.get("access_token") || Deno.env.get("WHATSAPP_ACCESS_TOKEN");
 
   if (!phoneNumberId || !accessToken) {
     return new Response(
@@ -30,7 +37,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     const metaRes = await fetch(
-      `https://graph.facebook.com/v22.0/${phoneNumberId}?fields=display_phone_number,verified_name`,
+      `https://graph.facebook.com/${META_API_VERSION}/${phoneNumberId}?fields=display_phone_number,verified_name`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
@@ -39,7 +46,7 @@ Deno.serve(async (req: Request) => {
     if (!metaRes.ok || data.error) {
       console.error("Meta API error:", data.error);
       return new Response(
-        JSON.stringify({ status: "error", error: "invalid_token" }),
+        JSON.stringify({ status: "error", error: "invalid_token", detail: data.error?.message }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

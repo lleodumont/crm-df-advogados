@@ -1,7 +1,7 @@
 export type LeadStatus = 'novo' | 'triagem' | 'qualificado' | 'agendado' | 'compareceu' | 'no_show' | 'proposta_enviada' | 'ganho' | 'perdido' | 'maturacao';
 export type LeadClassification = 'morno' | 'qualificado' | 'estrategico';
 export type FamilyIncomeRange = 'ate_10k' | '10k_25k' | '25k_50k' | 'acima_50k' | 'prefiro_nao_informar';
-export type UserRole = 'admin' | 'atendimento' | 'comercial' | 'viewer';
+export type UserRole = 'admin' | 'atendimento' | 'comercial' | 'juridico' | 'viewer';
 export type ActivityType = 'msg_sent' | 'msg_received' | 'call' | 'audio' | 'followup' | 'note' | 'status_change';
 export type ActivityChannel = 'whatsapp' | 'phone' | 'email' | 'internal';
 export type ScheduledActivityType = 'meeting' | 'call' | 'task' | 'email' | 'follow_up';

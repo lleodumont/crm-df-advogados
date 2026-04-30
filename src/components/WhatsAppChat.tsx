@@ -49,6 +49,7 @@ interface WhatsAppInstance {
   instance_id: string;
   status: string;
   phone_number: string | null;
+  provider: 'meta' | 'uazapi';
 }
 
 interface Tag {
@@ -304,12 +305,14 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
 
   const loadMessages = async () => {
     try {
-      // Normaliza o telefone do lead para buscar todas as mensagens do número
-      const normalizedPhone = leadPhone.replace(/^\+/, '');
+      // Normaliza o telefone do lead para buscar mensagens em ambos os formatos (com/sem DDI 55)
+      const rawPhone = leadPhone.replace(/\D/g, '');
+      const phoneWith55 = rawPhone.startsWith('55') ? rawPhone : `55${rawPhone}`;
+      const phoneWithout55 = rawPhone.startsWith('55') ? rawPhone.slice(2) : rawPhone;
       const { data, error } = await supabase
         .from('whatsapp_messages')
         .select('*')
-        .or(`lead_id.eq.${leadId},phone_number.eq.${normalizedPhone}`)
+        .or(`lead_id.eq.${leadId},phone_number.eq.${phoneWith55},phone_number.eq.${phoneWithout55}`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -911,6 +914,37 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
 
       {/* Footer / Input */}
       <div className="border-t border-gray-100 p-4 bg-gray-50/50 backdrop-blur-md">
+        {/* Seletor de instância — só exibe quando há múltiplas */}
+        {instances.length > 1 && (
+          <div className="flex items-center gap-2 mb-3 overflow-x-auto max-w-4xl mx-auto">
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest whitespace-nowrap flex-shrink-0">
+              Enviar via:
+            </span>
+            {instances.map((inst) => {
+              const isSelected = selectedInstance === inst.instance_id;
+              const isUaz = inst.provider === 'uazapi';
+              return (
+                <button
+                  key={inst.instance_id}
+                  onClick={() => setSelectedInstance(inst.instance_id)}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap flex-shrink-0 transition-all border ${
+                    isSelected
+                      ? isUaz
+                        ? 'bg-green-600 text-white border-green-600 shadow-sm'
+                        : 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <MessageCircle className="w-3 h-3 flex-shrink-0" />
+                  {inst.name}
+                  {inst.phone_number && (
+                    <span className="opacity-70 text-[10px]">· {inst.phone_number.slice(-4)}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {/* Media Preview */}
         {mediaPreview && (
           <div className="mb-3 flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm max-w-4xl mx-auto">
@@ -957,9 +991,9 @@ export default function WhatsAppChat({ leadId, leadPhone, leadName }: Props) {
           {/* Template button */}
           <button
             onClick={() => { setShowTemplateModal(true); loadTemplates(); }}
-            disabled={sending || sendingMedia || sendingTemplate || instances.length === 0}
+            disabled={sending || sendingMedia || sendingTemplate || instances.length === 0 || instances.find(i => i.instance_id === selectedInstance)?.provider === 'uazapi'}
             className="w-12 h-12 rounded-2xl flex items-center justify-center transition-all flex-shrink-0 bg-white border border-gray-200 text-gray-400 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 shadow-sm disabled:opacity-50"
-            title="Enviar template"
+            title={instances.find(i => i.instance_id === selectedInstance)?.provider === 'uazapi' ? 'Templates não disponíveis via UazAPI' : 'Enviar template'}
           >
             <LayoutTemplate className="w-5 h-5" />
           </button>

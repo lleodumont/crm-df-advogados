@@ -34,6 +34,29 @@ async function uploadMediaToStorage(
   }
 }
 
+async function transcribeAudio(bytes: Uint8Array, mimetype: string): Promise<string | null> {
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  if (!apiKey) return null;
+  try {
+    const ext = mimetype.includes("ogg") ? "ogg" : mimetype.includes("mp4") ? "mp4" : mimetype.includes("mpeg") ? "mp3" : "ogg";
+    const form = new FormData();
+    form.append("file", new Blob([bytes], { type: mimetype }), `audio.${ext}`);
+    form.append("model", "whisper-1");
+    form.append("language", "pt");
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+    if (!res.ok) { console.error("Whisper error:", await res.text()); return null; }
+    const data = await res.json();
+    return data.text?.trim() || null;
+  } catch (e) {
+    console.error("transcribeAudio error:", e);
+    return null;
+  }
+}
+
 async function downloadMetaMedia(
   mediaId: string,
   accessToken: string
@@ -197,6 +220,10 @@ Deno.serve(async (req: Request) => {
               const ext = downloaded.mimetype.split("/")[1]?.split(";")[0] || "bin";
               const fname = `meta/${wamid}.${ext}`;
               mediaUrl = await uploadMediaToStorage(supabase, downloaded.bytes, downloaded.mimetype, fname);
+              if (rawType === "audio" || rawType === "voice") {
+                const transcription = await transcribeAudio(downloaded.bytes, downloaded.mimetype);
+                if (transcription) content = transcription;
+              }
             }
             if (!mediaUrl) downloadFailed = true;
           }
@@ -208,6 +235,8 @@ Deno.serve(async (req: Request) => {
 
         // Upsert garante que não haverá lead duplicado mesmo com chamadas paralelas
         const contactName = contacts.find((c: any) => c.wa_id === fromRaw || normalizePhone(c.wa_id) === cleanPhone)?.profile?.name ?? cleanPhone;
+        // Número com e sem DDI 55 — leads criados manualmente podem não ter o 55
+        const phoneAlt = cleanPhone.startsWith("55") ? cleanPhone.slice(2) : `55${cleanPhone}`;
         const { data: upsertedLead } = await supabase
           .from("leads")
           .upsert(
@@ -217,13 +246,13 @@ Deno.serve(async (req: Request) => {
           .select("id")
           .maybeSingle();
 
-        // Se não retornou (lead já existia), busca pelo telefone
+        // Se não retornou (lead já existia), busca pelo telefone em ambos os formatos
         let lead = upsertedLead;
         if (!lead) {
           const { data: existing } = await supabase
             .from("leads")
             .select("id")
-            .eq("phone", cleanPhone)
+            .or(`phone.eq.${cleanPhone},phone.eq.${phoneAlt}`)
             .maybeSingle();
           lead = existing;
         }

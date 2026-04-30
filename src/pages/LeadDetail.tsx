@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, BarChart3, CheckCircle, Tag as TagIcon, Plus, X, CreditCard as Edit, Save, Scale, Pencil } from 'lucide-react';
+import { Phone, Mail, TrendingUp, Calendar, FileText, DollarSign, Clock, MessageSquare, BarChart3, CheckCircle, Tag as TagIcon, Plus, X, CreditCard as Edit, Save, Scale, Pencil, Trash2 } from 'lucide-react';
 import type { Database } from '../lib/database.types';
 import { useAuth } from '../contexts/AuthContext';
 import { notify } from '../lib/toast';
@@ -603,6 +603,14 @@ export default function LeadDetail() {
     );
   }
 
+  const handleDelete = async () => {
+    if (!confirm(`Excluir o lead "${lead?.full_name}"? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('leads').delete().eq('id', id);
+    if (error) { notify.error('Erro ao excluir lead'); return; }
+    notify.success('Lead excluído');
+    window.location.href = '/leads';
+  };
+
   // Calcular valor total das propostas ganhas
   const totalWonProposalsValue = proposals
     .filter(p => p.status === 'won')
@@ -621,13 +629,22 @@ export default function LeadDetail() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <h1 className="text-xl md:text-3xl font-bold text-gray-900">{lead.full_name}</h1>
         {!isJuridico && (
-          <button
-            onClick={() => setIsEditing(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors self-start md:self-auto"
-          >
-            <Edit className="w-4 h-4" />
-            Editar Lead
-          </button>
+          <div className="flex items-center gap-2 self-start md:self-auto">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Edit className="w-4 h-4" />
+              Editar Lead
+            </button>
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Excluir
+            </button>
+          </div>
         )}
       </div>
 

@@ -50,8 +50,8 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-slate-900 rounded-xl mb-4">
             <Scale className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900">DF CRM</h1>
-          <p className="text-gray-600 mt-2">Divórcios</p>
+          <h1 className="text-3xl font-bold text-gray-900">CENTRAL COMERCIAL</h1>
+          <p className="text-gray-600 mt-2">DF Advogados</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-8">

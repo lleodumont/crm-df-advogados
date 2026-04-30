@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Layers, Plus, X, CreditCard as Edit2, Check, ArrowUp, ArrowDown, AlertCircle } from 'lucide-react';
+import { notify } from '../lib/toast';
 
 interface Stage {
   id: string;
@@ -10,6 +11,7 @@ interface Stage {
   order_index: number;
   is_default: boolean | null;
   created_at: string | null;
+  sector: 'comercial' | 'juridico';
 }
 
 const PRESET_COLORS = [
@@ -150,7 +152,22 @@ export default function Stages() {
       loadStages();
     } catch (error) {
       console.error('Error deleting stage:', error);
-      alert('Erro ao excluir etapa. Verifique se não há leads associados a ela.');
+      notify.error('Erro ao excluir etapa. Verifique se não há leads associados a ela.');
+    }
+  };
+
+  const updateStageSector = async (stageId: string, sector: 'comercial' | 'juridico') => {
+    if (!isAdmin) return;
+    try {
+      const { error } = await supabase
+        .from('pipeline_stages')
+        .update({ sector })
+        .eq('id', stageId);
+      if (error) throw error;
+      loadStages();
+    } catch (error) {
+      console.error('Error updating stage sector:', error);
+      notify.error('Erro ao atualizar setor da etapa.');
     }
   };
 
@@ -227,6 +244,13 @@ export default function Stages() {
                 {stage.is_default && (
                   <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">Padrão</span>
                 )}
+                <span className={`text-xs px-2 py-1 rounded font-medium ${
+                  stage.sector === 'juridico'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-blue-100 text-blue-700'
+                }`}>
+                  {stage.sector === 'juridico' ? 'Jurídico' : 'Comercial'}
+                </span>
               </div>
             ))}
           </div>
@@ -375,6 +399,17 @@ export default function Stages() {
                     {stage.is_default && (
                       <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">Padrão</span>
                     )}
+                    <button
+                      onClick={() => updateStageSector(stage.id, stage.sector === 'comercial' ? 'juridico' : 'comercial')}
+                      className={`text-xs px-2 py-1 rounded font-medium transition-colors ${
+                        stage.sector === 'juridico'
+                          ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                      }`}
+                      title="Clique para alternar setor"
+                    >
+                      {stage.sector === 'juridico' ? 'Jurídico' : 'Comercial'}
+                    </button>
                     <button
                       onClick={() => startEdit(stage)}
                       className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"

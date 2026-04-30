@@ -73,7 +73,7 @@ export default function LeadsList() {
 
   const [filters, setFilters] = useState<Filters>(() => {
     const params = new URLSearchParams(window.location.search);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
     return {
       search: '',
       status: (params.get('status') as any) || 'all',
@@ -206,17 +206,17 @@ export default function LeadsList() {
       }
 
       if (filters.entryDateStart) {
-        query = query.gte('created_at', `${filters.entryDateStart}T00:00:00.000Z`);
+        query = query.gte('created_at', `${filters.entryDateStart}T00:00:00-03:00`);
       }
       if (filters.entryDateEnd) {
-        query = query.lte('created_at', `${filters.entryDateEnd}T23:59:59.999Z`);
+        query = query.lte('created_at', `${filters.entryDateEnd}T23:59:59-03:00`);
       }
 
       if (filters.wonDateStart) {
-        query = query.gte('closed_at', `${filters.wonDateStart}T00:00:00.000Z`);
+        query = query.gte('closed_at', `${filters.wonDateStart}T00:00:00-03:00`);
       }
       if (filters.wonDateEnd) {
-        query = query.lte('closed_at', `${filters.wonDateEnd}T23:59:59.999Z`);
+        query = query.lte('closed_at', `${filters.wonDateEnd}T23:59:59-03:00`);
       }
 
       if (filters.utmSource) query = query.ilike('utm_source', `%${filters.utmSource}%`);
