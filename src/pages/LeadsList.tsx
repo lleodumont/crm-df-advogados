@@ -718,6 +718,9 @@ export default function LeadsList() {
                       >
                         {lead.full_name}
                       </a>
+                      {lead.cargo && (
+                        <div className="text-xs text-blue-600 font-medium mt-0.5">{lead.cargo}</div>
+                      )}
                       {lead.campaign && (
                         <div className="text-xs text-gray-500">{lead.campaign}</div>
                       )}

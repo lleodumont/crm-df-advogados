@@ -206,6 +206,7 @@ Deno.serve(async (req: Request) => {
         adset_id: payload.adset_id || null,
         ad_id: payload.ad_id || null,
         family_income_range: payload.family_income_range || null,
+        cargo: payload.cargo || null,
       })
       .select()
       .single();
@@ -242,15 +243,37 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // Campos flat (landing pages, N8N, Make, Zapier)
-    if (payload.cargo) {
-      answersToInsert.push({ lead_id: leadData.id, question_key: "cargo", answer_value: payload.cargo, source: "meta_form" });
+    // Campos flat (landing pages, N8N, Make, Zapier) — aceita variações de nome
+    const cargoValue = payload.cargo || (payload as any).cargo_real;
+    const colaboradoresValue = payload.num_colaboradores || (payload as any).colaboradores || (payload as any).num_colaboradores_real;
+    const faturamentoValue = payload.faturamento_mensal || (payload as any).faturamento || (payload as any).faturamento_real;
+
+    if (cargoValue) {
+      answersToInsert.push({ lead_id: leadData.id, question_key: "cargo", answer_value: cargoValue, source: "meta_form" });
     }
-    if (payload.num_colaboradores) {
-      answersToInsert.push({ lead_id: leadData.id, question_key: "num_colaboradores", answer_value: payload.num_colaboradores, source: "meta_form" });
+    if (colaboradoresValue) {
+      answersToInsert.push({ lead_id: leadData.id, question_key: "num_colaboradores", answer_value: colaboradoresValue, source: "meta_form" });
     }
-    if (payload.faturamento_mensal) {
-      answersToInsert.push({ lead_id: leadData.id, question_key: "faturamento_mensal", answer_value: payload.faturamento_mensal, source: "meta_form" });
+    if (faturamentoValue) {
+      answersToInsert.push({ lead_id: leadData.id, question_key: "faturamento_mensal", answer_value: faturamentoValue, source: "meta_form" });
+    }
+
+    // Verifica se form_responses contém cargo/colaboradores sob chaves normalizadas diferentes
+    if (payload.form_responses) {
+      const alreadyHasCargo = answersToInsert.some(a => a.question_key === "cargo");
+      const alreadyHasColab = answersToInsert.some(a => a.question_key === "num_colaboradores");
+      const alreadyHasFat = answersToInsert.some(a => a.question_key === "faturamento_mensal");
+
+      for (const response of payload.form_responses) {
+        const qLower = response.question.toLowerCase();
+        if (!alreadyHasCargo && (qLower === "cargo" || qLower.includes("cargo") || qLower.includes("função") || qLower.includes("funcao"))) {
+          answersToInsert.push({ lead_id: leadData.id, question_key: "cargo", answer_value: response.answer, source: "meta_form" });
+        } else if (!alreadyHasColab && (qLower === "num_colaboradores" || qLower.includes("colaborador") || qLower.includes("funcionario") || qLower.includes("funcionário"))) {
+          answersToInsert.push({ lead_id: leadData.id, question_key: "num_colaboradores", answer_value: response.answer, source: "meta_form" });
+        } else if (!alreadyHasFat && (qLower === "faturamento_mensal" || qLower.includes("faturamento"))) {
+          answersToInsert.push({ lead_id: leadData.id, question_key: "faturamento_mensal", answer_value: response.answer, source: "meta_form" });
+        }
+      }
     }
 
     if (answersToInsert.length > 0) {
